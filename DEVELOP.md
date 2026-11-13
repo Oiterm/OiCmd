@@ -23,6 +23,7 @@ internal/server       127.0.0.1 웹 서버 + 화면(ui/, embed). /api/ 는 실�
   ui/js/core.js       공통, 내 데이터(user.json) 읽기·저장
   ui/js/match.js      명령어 맞추기(줄임말), 값 바꾸기(포트·MAC·마스크)
   ui/js/gen.js        설정 만들기 (벤더별)
+  ui/js/guide.js      따라하기: <자리> 모으기·채우기, 찾기
   ui/js/app.js        화면
 internal/update       OiNMS 의 것과 같음 (서명 확인 자동 업데이트)
 tools/gendata         명령어 데이터 원본
@@ -43,6 +44,15 @@ CI 가 commands.json 이 원본과 같은지, 형식이 맞는지(go test) 검�
   변환에서 이 이름으로 값을 옮기므로 같은 뜻이면 같은 이름을 씁니다. `<포트>`·`<받는포트>`·`<MAC>` 은 벤더 형식으로 바꿉니다.
 - 명령어 글자가 바뀌면 그 칸의 사용자 [확인됨] 표시는 자동으로 풀립니다(글자 해시로 비교).
 - 확실하지 않은 것은 메모에 "버전별 확인 필요"를 붙이거나 `(None, ...)` 으로 둡니다. 틀린 명령은 현장에서 사고가 납니다.
+
+## 따라하기 데이터 고치기
+
+`tools/gendata/guides.py` 의 `guide(...)` 를 고치고 `python3 tools/gendata/commands.py` (같은 commands.json 의 `guides` 로 들어감).
+
+- 단계 = `("명령어", "이 명령이 하는 일")`. 하위 모드 줄은 앞에 공백 한 칸. 확인은 `check=`, 되돌리기는 `undo=`
+- `mode="config"` 면 설정 모드 들어가기·저장 단계가 자동으로 앞뒤에 붙고, `remote` 는 주니퍼를 commit confirmed 로, `show` 는 안 붙음
+- `<자리>` 이름은 모든 따라하기가 같이 쓰므로 같은 뜻이면 같은 이름. 새 이름은 `HINTS` 에 예시와 함께 넣어야 생성기가 통과합니다
+- `rel=` 에 사전 항목 id 를 넣으면 사전 카드에 '순서대로 따라하기' 링크가 생깁니다
 
 ## 릴리즈 (자동 업데이트)
 

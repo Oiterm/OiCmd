@@ -5,6 +5,7 @@
   const { h, clear } = O;
   const ROUTES = [
     ['', '명령어 사전', 'book'],
+    ['guide', '따라하기', 'steps'],
     ['convert', '명령어 변환', 'swap'],
     ['gen', '설정 만들기', 'wand'],
     ['mine', '내 명령어', 'star'],
@@ -16,6 +17,7 @@
     wand: 'M4 20 15 9M14 4v3M20 10h-3M18.5 5.5l-2 2M9 4.5 10 6M19.5 14.5 18 13.5',
     star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z',
     gear: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4z',
+    steps: 'M10 6h10M10 12h10M10 18h10M4 5.5l1.5 1.5L8 4.5M4 11.5l1.5 1.5L8 10.5M4.5 18h2',
     copy: 'M9 9h10v11H9zM5 15V4h10',
     edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   };
@@ -68,7 +70,7 @@
 
   function route() {
     const r = (location.hash.replace(/^#\/?/, '').split('?')[0]) || '';
-    const page = { '': dictPage, convert: convertPage, gen: genPage, mine: minePage, settings: settingsPage }[r] || dictPage;
+    const page = { '': dictPage, guide: guidePage, convert: convertPage, gen: genPage, mine: minePage, settings: settingsPage }[r] || dictPage;
     for (const a of document.querySelectorAll('.nav a')) a.classList.toggle('on', a.dataset.r === r);
     clear(main);
     clear(toolsEl);
@@ -119,6 +121,7 @@
         h('span', { class: 'grow' }),
         e.custom ? h('button', { type: 'button', class: 'ghost sm', onclick: () => editCustom(e.id) }, '고치기') : null),
       e.d ? h('p', { class: 'desc' }, e.d) : null,
+      guideLinks(e),
       grid);
   }
 
@@ -259,6 +262,157 @@
     drawCats();
     draw();
     setTimeout(() => q.focus(), 0);
+  }
+
+  // ---------------- 따라하기 (작업 순서) ----------------
+  // 사전 카드 아래: 이 명령을 쓰는 따라하기로 가기
+  function guideLinks(e) {
+    if (e.custom) return null;
+    const gs = O.guidesForEntry(e.id);
+    if (!gs.length) return null;
+    return h('div', { class: 'glinks' }, h('span', { class: 'muted small' }, '순서대로 따라하기:'),
+      gs.map((g) => h('a', { href: '#/guide?id=' + encodeURIComponent(g.id), class: 'glink' }, O.icon('steps', 13), g.t)));
+  }
+
+  const guideState = { q: '', sel: '', reveal: new Set(), done: new Set() };
+
+  function guidePage() {
+    setTitle('따라하기');
+    const gu = O.user.guide;
+    const m = location.hash.match(/[?&]id=([^&]+)/);
+    if (m) { guideState.sel = decodeURIComponent(m[1]); history.replaceState(null, '', location.pathname + '#/guide'); }
+    const guides = O.data.guides || [];
+    if (!guides.find((g) => g.id === guideState.sel)) guideState.sel = guides.length ? guides[0].id : '';
+
+    const listBox = h('nav', { class: 'glist', 'aria-label': '따라하기 목록' });
+    const detail = h('section', { class: 'gdetail' });
+    const q = h('input', { type: 'search', placeholder: '찾기 — 예: ssh, 트렁크, 이중화, 점검', 'aria-label': '따라하기 찾기', dataset: { focus: '1' } });
+    q.value = guideState.q;
+    let t;
+    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { guideState.q = q.value; drawList(); }, 120); });
+
+    function drawList() {
+      clear(listBox);
+      const found = O.searchGuides(guideState.q, O.visibleVendors());
+      if (!found.length) { listBox.append(h('div', { class: 'muted small gl-empty' }, '찾는 따라하기가 없습니다')); return; }
+      const byCat = guideState.q.trim() ? [{ id: '', name: `${found.length}개 찾음`, items: found }]
+        : [...new Set(guides.map((g) => g.cat))].map((id) => ({ ...O.catById[id], items: found.filter((g) => g.cat === id) })).filter((c) => c.items.length); // 분야는 따라하기를 넣은 순서대로 (처음 설정이 맨 위)
+      for (const c of byCat) {
+        listBox.append(h('div', { class: 'gl-cat' }, c.name));
+        for (const g of c.items) {
+          listBox.append(h('button', { type: 'button', class: 'gl-item' + (g.id === guideState.sel ? ' on' : ''), 'aria-current': g.id === guideState.sel ? 'true' : null,
+            onclick: () => { guideState.sel = g.id; guideState.reveal.clear(); guideState.done.clear(); drawList(); drawDetail(); main.scrollTop = 0; window.scrollTo(0, 0); } },
+          g.mode === 'show' ? h('span', { class: 'gl-k' }, '조회') : null, g.t));
+        }
+      }
+    }
+
+    function drawDetail() {
+      clear(detail);
+      const g = guides.find((x) => x.id === guideState.sel);
+      if (!g) { detail.append(h('div', { class: 'empty' }, '따라하기 데이터가 없습니다')); return; }
+      const vis = O.visibleVendors();
+      if (!vis.includes(gu.vendor)) gu.vendor = vis[0];
+      const vid = gu.vendor;
+      const v = O.vendorById[vid];
+      const gv = g.v[vid];
+
+      const tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': '벤더' }, vis.map((id) => {
+        const x = g.v[id];
+        return h('button', { type: 'button', role: 'tab', class: 'tab ' + (id === vid ? 'on' : '') + (x && x.none ? ' dim' : ''), 'aria-selected': String(id === vid),
+          onclick: () => { gu.vendor = id; guideState.reveal.clear(); guideState.done.clear(); O.saveUser(); drawDetail(); } }, O.vendorById[id].name);
+      }));
+      const cat = O.catById[g.cat];
+      detail.append(
+        h('div', { class: 'gd-h' },
+          h('div', { class: 'gd-title' }, h('h2', null, g.t),
+            h('span', { class: 'kind ' + (g.mode === 'show' ? '' : 'k-config') }, g.mode === 'show' ? '조회·점검 순서' : '설정 순서'),
+            cat ? h('span', { class: 'catname' }, cat.name) : null),
+          g.d ? h('p', { class: 'desc' }, g.d) : null),
+        h('div', { class: 'gd-tabs' }, tabs, h('span', { class: 'muted small' }, v.os)));
+      if (g.warn) detail.append(h('div', { class: 'gwarn', role: 'note' }, h('b', null, '주의 '), g.warn));
+      if (!gv || gv.none) {
+        detail.append(h('div', { class: 'empty' }, h('b', null, v.name + ' 은(는) 이 작업이 없습니다. '), gv ? gv.none : ''));
+        return;
+      }
+
+      // 값 넣기
+      const names = O.guidePlaceholders(gv);
+      const stepsBox = h('div');
+      if (names.length) {
+        const grid = h('div', { class: 'gvals' });
+        for (const name of names) {
+          const secret = /비밀번호|비밀키/.test(name);
+          const inp = h('input', { type: 'text', class: 'mono', placeholder: O.guideHint(name, vid) || name, 'aria-label': name, autocomplete: 'off', spellcheck: 'false' });
+          inp.value = gu.vals[name] || '';
+          if (secret) inp.title = '비밀번호는 이 PC 의 내 데이터(user.json)에 저장됩니다. 비워 두면 <비밀번호> 그대로 복사됩니다';
+          inp.addEventListener('input', () => {
+            if (inp.value) gu.vals[name] = inp.value; else delete gu.vals[name];
+            O.saveUser();
+            drawSteps();
+          });
+          grid.append(h('label', { class: 'f' }, h('span', null, name, secret ? h('span', { class: 'muted' }, ' (저장됨)') : null), inp));
+        }
+        detail.append(h('details', { class: 'gvals-box', open: true },
+          h('summary', null, '값 넣기', h('span', { class: 'muted small' }, ' — 한 번 넣으면 아래 명령어와 다른 따라하기에도 같이 채워집니다')), grid));
+      }
+
+      const learn = h('input', { type: 'checkbox', checked: gu.learn });
+      learn.addEventListener('change', () => { gu.learn = learn.checked; guideState.reveal.clear(); O.saveUser(); drawSteps(); });
+      detail.append(h('div', { class: 'gd-tools' },
+        h('button', { type: 'button', class: 'primary sm', onclick: () => O.copy(gv.steps.map((s) => O.guideFill(s.c, gu.vals)).join('\n')) }, O.icon('copy', 14), '전체 복사'),
+        h('label', { class: 'chk', title: '명령어를 가려 두고 설명만 보고 떠올려 본 뒤 눌러서 확인합니다' }, learn, '학습 모드 (명령어 가리기)'),
+        h('span', { class: 'grow' }),
+        h('button', { type: 'button', class: 'ghost sm', onclick: () => { guideState.done.clear(); drawSteps(); } }, '체크 지우기')));
+      if (g.mode !== 'show' && !v.config) detail.append(h('p', { class: 'note gd-mode' }, O.data.aosConfigNote || ''));
+      detail.append(stepsBox);
+
+      function cmdBlock(text, key) {
+        if (gu.learn && key && !guideState.reveal.has(key)) {
+          return h('button', { type: 'button', class: 'reveal', onclick: () => { guideState.reveal.add(key); drawSteps(); } }, '명령어 떠올려 보고 눌러서 확인');
+        }
+        return O.cmdEl(text);
+      }
+      function rows(list, prefix, numbered) {
+        const ol = h(numbered ? 'ol' : 'ul', { class: 'gsteps' });
+        list.forEach((st, i) => {
+          const key = prefix + i;
+          const text = O.guideFill(st.c, gu.vals);
+          const done = guideState.done.has(key);
+          const ck = h('input', { type: 'checkbox', checked: done, 'aria-label': (i + 1) + '단계 했음' });
+          ck.addEventListener('change', () => { if (ck.checked) guideState.done.add(key); else guideState.done.delete(key); li.classList.toggle('done', ck.checked); });
+          const li = h('li', { class: 'gstep' + (st.auto ? ' auto' : '') + (done ? ' done' : '') },
+            numbered ? h('span', { class: 'gnum' }, String(i + 1)) : null,
+            h('div', { class: 'gbody' },
+              h('div', { class: 'gdesc' }, st.d, st.auto ? h('span', { class: 'gauto' }, '기본') : null),
+              cmdBlock(text, st.auto ? '' : key)),
+            h('div', { class: 'gact' },
+              numbered ? ck : null,
+              h('button', { type: 'button', class: 'ghost sm', title: '이 줄 복사', 'aria-label': '복사', onclick: () => O.copy(text) }, O.icon('copy', 14))));
+          ol.append(li);
+        });
+        return ol;
+      }
+      function drawSteps() {
+        clear(stepsBox);
+        stepsBox.append(rows(gv.steps, 's', true));
+        if (gv.check.length) stepsBox.append(h('h3', { class: 'gsec ok' }, '✓ 됐는지 확인'), rows(gv.check, 'c', false));
+        if (gv.undo.length) stepsBox.append(h('h3', { class: 'gsec' }, '↩ 되돌리기·지우기'), rows(gv.undo, 'u', false));
+        if (gv.note) stepsBox.append(h('div', { class: 'gnote' }, h('b', null, '참고 '), gv.note));
+        const rel = (g.rel || []).map((id) => O.data.entries.find((e) => e.id === id)).filter(Boolean);
+        if (rel.length) {
+          stepsBox.append(h('div', { class: 'glinks' }, h('span', { class: 'muted small' }, '사전에서 보기:'),
+            rel.map((e) => h('button', { type: 'button', class: 'linkish small', onclick: () => { dictState.q = e.t; dictState.cat = ''; location.hash = '#/'; } }, e.t))));
+        }
+        stepsBox.append(h('p', { class: 'muted small' }, `공식 문서 기준으로 넣었지만 장비·버전마다 다를 수 있습니다. 랩(PNETLab)이나 콘솔로 붙은 장비에서 먼저 해 보세요. ${v.name} 저장: ${v.save}`));
+      }
+      drawSteps();
+    }
+
+    toolsEl.append(vendorChips(() => { drawList(); drawDetail(); }));
+    main.append(h('div', { class: 'guide' }, h('div', { class: 'gside' }, q, listBox), detail));
+    drawList();
+    drawDetail();
   }
 
   // ---------------- 명령어 변환 ----------------

@@ -82,6 +82,9 @@ O.loadUser = async function () {
   u.overrides = u.overrides && typeof u.overrides === 'object' ? u.overrides : {};
   u.custom = Array.isArray(u.custom) ? u.custom : [];
   u.gen = u.gen && typeof u.gen === 'object' ? u.gen : null;
+  // 따라하기: 고른 벤더, 넣은 값(<자리> 이름별, 모든 따라하기가 같이 씀), 학습 모드
+  const g = u.guide && typeof u.guide === 'object' ? u.guide : {};
+  u.guide = { vendor: typeof g.vendor === 'string' ? g.vendor : '', vals: g.vals && typeof g.vals === 'object' ? g.vals : {}, learn: !!g.learn };
   O.user = u;
   return u;
 };

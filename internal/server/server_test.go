@@ -135,6 +135,13 @@ func TestCommandsData(t *testing.T) {
 				Note string  `json:"note"`
 			} `json:"v"`
 		} `json:"entries"`
+		Guides []struct {
+			ID, Cat, T, Mode string
+			V                map[string]struct {
+				None  string `json:"none"`
+				Steps []struct{ C, D string } `json:"steps"`
+			} `json:"v"`
+		} `json:"guides"`
 	}
 	if err := json.Unmarshal(b, &d); err != nil {
 		t.Fatal(err)
@@ -177,6 +184,39 @@ func TestCommandsData(t *testing.T) {
 		}
 		if n == 0 {
 			t.Errorf("%s: 명령이 하나도 없음", e.ID)
+		}
+	}
+	// 따라하기: 분야, 벤더 다 있음, 단계마다 명령과 설명
+	if len(d.Guides) < 30 {
+		t.Fatalf("따라하기 %d개", len(d.Guides))
+	}
+	for _, g := range d.Guides {
+		if ids[g.ID] {
+			t.Errorf("중복 id %s", g.ID)
+		}
+		ids[g.ID] = true
+		if !cats[g.Cat] || g.T == "" {
+			t.Errorf("%s: 분야·제목", g.ID)
+		}
+		n := 0
+		for _, v := range d.Vendors {
+			x, ok := g.V[v.ID]
+			if !ok {
+				t.Errorf("%s: %s 빠짐", g.ID, v.ID)
+				continue
+			}
+			if x.None != "" {
+				continue
+			}
+			n++
+			for i, st := range x.Steps {
+				if st.C == "" || st.D == "" {
+					t.Errorf("%s/%s: %d단계 비었음", g.ID, v.ID, i+1)
+				}
+			}
+		}
+		if n == 0 {
+			t.Errorf("%s: 할 수 있는 벤더가 없음", g.ID)
 		}
 	}
 }

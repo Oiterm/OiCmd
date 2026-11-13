@@ -8,7 +8,7 @@ import (
 )
 
 // Version 은 릴리즈 버전 (release.yml 이 이 줄을 읽는다).
-const Version = "1.2.0"
+const Version = "1.3.0"
 
 const Product = "OiCmd"
 

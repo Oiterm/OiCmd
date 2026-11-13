@@ -12,7 +12,10 @@ kind      show: 조회 (일반/관리자 모드)   exec: 관리자 모드 동작
 모든 기본 명령어는 공식 문서 기준으로 넣었지만 장비·버전마다 다를 수 있어 화면에서는 '미확인'으로 시작한다.
 사용자가 실제 장비에서 쳐 보고 '확인됨'으로 바꾼다(그 표시는 user.json 에 저장).
 """
-import json, os, sys
+import json, os, re, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import guides as GD  # 따라하기(작업 순서) 데이터
 
 VENDORS = [
     {"id": "c", "name": "시스코", "os": "IOS / IOS-XE", "port": "Gi1/0/1", "prompt": "Switch#",
@@ -1459,6 +1462,44 @@ def norm(v):
     return out
 
 
+def norm_guides(vk, ids, cats):
+    """따라하기: 설정 모드 들어가기·저장 단계를 붙이고 형식을 검사한다"""
+    out, gids = [], set()
+    ph = re.compile(r"<([^<>\n]{1,24})>")
+    for g in GD.G:
+        assert g["id"] not in gids and g["id"] not in ids, "중복 id " + g["id"]
+        gids.add(g["id"])
+        assert g["cat"] in cats, g["id"]
+        assert g["mode"] in ("config", "remote", "show"), g["id"]
+        assert set(g["v"]) == set(vk), "벤더 빠짐 " + g["id"]
+        for r in g["rel"]:
+            assert r in ids, g["id"] + ": 없는 사전 항목 " + r
+        v = {}
+        for vid, x in g["v"].items():
+            if isinstance(x, tuple):
+                assert x[0] is None and x[1], g["id"] + "/" + vid
+                v[vid] = {"none": x[1]}
+                continue
+            steps = [{"c": c, "d": d} for c, d in x["steps"]]
+            assert steps, g["id"] + "/" + vid + ": 단계 없음"
+            if g["mode"] != "show":
+                save = GD.SAVE_REMOTE_J if (vid == "j" and g["mode"] == "remote") else GD.SAVE[vid]
+                steps = [{"c": c, "d": d, "auto": 1} for c, d in GD.ENTER[vid]] + steps + [{"c": c, "d": d, "auto": 1} for c, d in save]
+            item = {"steps": steps,
+                    "check": [{"c": c, "d": d} for c, d in x["check"]],
+                    "undo": [{"c": c, "d": d} for c, d in x["undo"]],
+                    "note": x["note"] or ""}
+            for part in ("steps", "check", "undo"):
+                for st in item[part]:
+                    assert st["c"] and st["d"], g["id"] + "/" + vid + ": 빈 줄"
+                    assert st["c"].count("<") == st["c"].count(">"), g["id"] + "/" + vid + ": < > 짝 " + st["c"]
+                    for name in ph.findall(st["c"]):
+                        assert name in GD.HINTS or name in ("포트", "업링크포트", "포트1", "포트2"), g["id"] + ": HINTS 에 없는 자리 <" + name + ">"
+            v[vid] = item
+        out.append({**g, "v": v})
+    return out
+
+
 def main():
     ids = set()
     vk = [v["id"] for v in VENDORS]
@@ -1474,6 +1515,8 @@ def main():
         "vendors": VENDORS,
         "cats": [{"id": a, "name": b} for a, b in CATS],
         "aosConfigNote": AOS_CFG,
+        "hints": GD.HINTS,
+        "guides": norm_guides(vk, ids, cats),
         "entries": [{**e, "v": norm(e["v"])} for e in sorted(E, key=lambda e: (ORDER.index(e["id"]) if e["id"] in ORDER else 999))],
     }
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1482,7 +1525,9 @@ def main():
         json.dump(data, f, ensure_ascii=False, indent=1)
         f.write("\n")
     n = sum(1 for e in E for x in e["v"].values() if not (x is None or (isinstance(x, tuple) and x[0] is None)))
-    print(f"{len(E)}개 항목, 명령어 {n}개 → {os.path.relpath(out, root)}")
+    gs = data["guides"]
+    ns = sum(len(x["steps"]) for g in gs for x in g["v"].values() if "steps" in x)
+    print(f"{len(E)}개 항목, 명령어 {n}개, 따라하기 {len(gs)}개(단계 {ns}개) → {os.path.relpath(out, root)}")
 
 
 if __name__ == "__main__":

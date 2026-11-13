@@ -10,10 +10,11 @@ global.sessionStorage = { getItem() { return ''; }, setItem() {} };
 global.document = { addEventListener() {}, createElement() { return {}; } };
 global.addEventListener = () => {};
 const ui = path.join(__dirname, '..', '..', 'internal', 'server', 'ui');
-for (const f of ['core.js', 'match.js', 'gen.js']) (0, eval)(fs.readFileSync(path.join(ui, 'js', f), 'utf8'));
+for (const f of ['core.js', 'match.js', 'gen.js', 'guide.js']) (0, eval)(fs.readFileSync(path.join(ui, 'js', f), 'utf8'));
 const O = global.O;
 O.data = JSON.parse(fs.readFileSync(path.join(ui, 'commands.json'), 'utf8'));
 O.vendorById = Object.fromEntries(O.data.vendors.map((v) => [v.id, v]));
+O.catById = Object.fromEntries(O.data.cats.map((c) => [c.id, c]));
 O.user = { settings: { ports: O.DEFAULT_PORTS }, overrides: {}, custom: [], verified: {} };
 
 let n = 0;
@@ -111,5 +112,31 @@ t('설정 만들기', () => {
   assert.ok(O.generate(g, 'o8').text.includes('linkagg lacp agg 1 size 2 actor admin-key 1'));
   const bad = O.generate({ vlans: [{ id: '5000' }], ports: [{ ports: '1-3', mode: 'access', vlan: '10' }, { ports: '3', mode: 'trunk', allowed: '10' }] }, 'c');
   assert.ok(bad.errors.length >= 2);
+});
+t('따라하기', () => {
+  const gs = O.data.guides;
+  assert.ok(gs.length >= 30);
+  const ssh = gs.find((g) => g.id === 'g-ssh');
+  const c = ssh.v.c.steps.map((s) => s.c);
+  assert.strictEqual(c[0], 'enable');
+  assert.ok(c.indexOf('hostname <장비이름>') < c.indexOf('crypto key generate rsa modulus 2048'));
+  assert.ok(c.indexOf('crypto key generate rsa modulus 2048') < c.indexOf('ip ssh version 2'));
+  assert.strictEqual(c[c.length - 1], 'write memory');
+  assert.strictEqual(ssh.v.j.steps[ssh.v.j.steps.length - 2].c, 'commit');
+  assert.strictEqual(gs.find((g) => g.id === 'g-vty-acl').v.j.steps.slice(-3)[0].c, 'commit confirmed 5');
+  assert.ok(!gs.find((g) => g.id === 'g-check-daily').v.c.steps.some((s) => s.auto));
+  assert.ok(gs.find((g) => g.id === 'g-hsrp').v.j.none);
+  const names = O.guidePlaceholders(ssh.v.c);
+  assert.deepStrictEqual(names.slice(0, 2), ['장비이름', '도메인']);
+  assert.strictEqual(O.guideFill('hostname <장비이름>\nip domain-name <도메인>', { 장비이름: ' SW1 ' }), 'hostname SW1\nip domain-name <도메인>');
+  assert.strictEqual(O.guideHint('포트', 'j'), 'ge-0/0/0');
+  assert.strictEqual(O.guideHint('포트2', 'o8'), '1/1/2');
+  assert.ok(O.guidesForEntry('ssh-on').some((g) => g.id === 'g-ssh'));
+  assert.strictEqual(O.searchGuides('ssh', ['c'])[0].id, 'g-ssh');
+  assert.ok(O.searchGuides('crypto key', ['c']).some((g) => g.id === 'g-ssh'));
+  for (const g of gs) for (const [vid, x] of Object.entries(g.v)) {
+    if (x.none) continue;
+    for (const s of x.steps) assert.ok(s.c && s.d, g.id + '/' + vid);
+  }
 });
 console.log(`JS 시험 ${n}개 통과`);
