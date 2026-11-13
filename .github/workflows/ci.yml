@@ -1,0 +1,45 @@
+# 시험 빌드: main 에 올리거나 PR 을 만들 때마다 go vet·go test 를 돌리고 설치 파일을 만들어 본다.
+# 만든 파일은 이 실행의 Artifacts(OiCmd-test-<버전>)에서 받을 수 있다 (14일 보관). 릴리즈는 만들지 않는다.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+      - name: 도구 설치 (NSIS, zip)
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis zip
+      - name: 명령어 데이터가 원본(tools/gendata)과 같은지
+        run: python3 tools/gendata/commands.py && git diff --exit-code internal/server/ui/commands.json
+      - name: 시험
+        run: go vet ./... && go test ./... && node tools/jstest/run.js
+      - name: 빌드
+        run: ./build.sh
+      - name: 버전
+        run: echo "VERSION=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/app/app.go)" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: OiCmd-test-${{ env.VERSION }}
+          path: dist/*
+          retention-days: 14

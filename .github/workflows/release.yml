@@ -1,0 +1,92 @@
+# 릴리즈: 빌드 → 업데이트 정보 서명 → 이 저장소(Oiterm/OiCmd)의 Releases 에 올림
+#  - 방법 1: Actions 탭 → release → "Run workflow" (internal/app/app.go 의 Version 으로 v<버전> 릴리즈)
+#  - 방법 2: v1.0.0 같은 태그를 올림
+# 필요한 저장소 Secrets:
+#  - OITERM_UPDATE_KEY : 업데이트 서명 개인 키 (OiTerm·OiNMS 와 같은 키, PEM)
+# 릴리즈는 GitHub 가 주는 GITHUB_TOKEN(contents: write)으로 만든다. 따로 토큰이 필요 없다.
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PRODUCT: OiCmd
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          # 러너에 미리 깔린 예전 패치 대신 1.27 의 최신 패치(표준 라이브러리 보안 수정)를 받아서 씀
+          check-latest: true
+          cache: false
+
+      - name: Go 버전 기록
+        run: go version
+
+      - name: 도구 설치 (NSIS, zip)
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis zip
+
+      - name: 버전 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEY: ${{ secrets.OITERM_UPDATE_KEY != '' }}
+        run: |
+          V=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/app/app.go)
+          if [ -z "$V" ]; then echo "버전을 찾을 수 없습니다"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "v$V" != "$GITHUB_REF_NAME" ]; then echo "태그($GITHUB_REF_NAME)와 app.go 버전(v$V)이 다릅니다"; exit 1; fi
+          if [ "$HAS_KEY" != "true" ]; then echo "저장소 Secrets 에 OITERM_UPDATE_KEY 가 없습니다"; exit 1; fi
+          if DRAFT=$(gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$DRAFT" = "true" ]; then
+              echo "이전 실패로 남은 v$V 초안 릴리즈를 지웁니다"
+              gh release delete "v$V" --repo "$GITHUB_REPOSITORY" --yes
+            else
+              echo "v$V 릴리즈가 이미 있습니다. app.go 의 Version 을 올리세요."; exit 1
+            fi
+          fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: 명령어 데이터가 원본(tools/gendata)과 같은지
+        run: python3 tools/gendata/commands.py && git diff --exit-code internal/server/ui/commands.json
+
+      - name: 시험
+        run: go vet ./... && go test ./... && node tools/jstest/run.js
+
+      - name: 빌드 (설치 프로그램 + 포터블)
+        run: ./build.sh
+
+      - name: 업데이트 정보 서명
+        env:
+          OITERM_UPDATE_KEY: ${{ secrets.OITERM_UPDATE_KEY }}
+        run: go run ./tools/mkrelease -product "$PRODUCT" -version "$VERSION" -dist dist
+
+      - name: 릴리즈 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" \
+            "dist/$PRODUCT-Setup-$VERSION.exe" \
+            "dist/$PRODUCT-$VERSION-portable.zip" \
+            "dist/$PRODUCT-update-$VERSION.zip" \
+            dist/latest.json dist/latest.json.sig \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$PRODUCT $VERSION" \
+            --notes-file dist/RELEASE_NOTES.md

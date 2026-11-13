@@ -1,0 +1,12 @@
+# 빌드 결과
+/dist/
+*.exe
+cmd/oicmd/rsrc_windows_amd64.syso
+/installer/README.txt
+/installer/THIRD_PARTY_LICENSES.txt
+/tools/genres/genres
+# 실행 데이터 (시험할 때)
+data/
+*.log
+user.json*
+__pycache__/
