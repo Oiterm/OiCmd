@@ -34,8 +34,12 @@ CATS = [
     ("l2", "MAC·ARP·이웃 장비"),
     ("lag", "포트 묶기 (LACP)"),
     ("stp", "스패닝 트리"),
-    ("l3", "IP·정적 라우팅"),
-    ("routing", "라우팅 프로토콜·이중화"),
+    ("l3", "IP·정적 라우팅·DHCP"),
+    ("ospf", "OSPF"),
+    ("bgp", "BGP"),
+    ("rip", "RIP·EIGRP"),
+    ("fhrp", "게이트웨이 이중화 (VRRP·HSRP)"),
+    ("mcast", "멀티캐스트 (IGMP·PIM)"),
     ("remote", "원격 접속 (SSH·텔넷)"),
     ("mgmt", "관리·보안"),
     ("trouble", "로그·상태·장애"),
@@ -514,7 +518,7 @@ add("vty-acl", "remote", "config", "원격 접속 허용 IP 제한 (관리 PC �
 
 add("session-timeout", "remote", "config", "접속 자동 끊김 시간 (유휴 시간)", {
     "c": ("line vty 0 15\n exec-timeout 10 0", "10분 0초. 콘솔은 line con 0"),
-    "j": (None, "로그인 클래스의 idle-timeout 으로 정합니다. 공식 문서 확인 필요"),
+    "j": ("set system login class <클래스> idle-timeout 10", "사용자에게 붙인 로그인 클래스에 겁니다 (분 단위)"),
     "a": ("line vty 0 32\n exec-timeout 10 0", "vty 번호 범위는 장비마다 다를 수 있습니다"),
     "o6": ("session timeout cli 10", "분 단위"),
     "o8": ("session timeout cli 10", "분 단위"),
@@ -537,7 +541,7 @@ add("session-kill", "remote", "exec", "남의 접속 세션 끊기", {
 }, keys="세션 끊기 강제 로그아웃 kill clear line 접속자")
 
 # ───────────────────────── 라우팅 프로토콜·이중화 ─────────────────────────
-add("ospf", "routing", "config", "OSPF 켜기 (area 0 에 대역 넣기)", {
+add("ospf", "ospf", "config", "OSPF 켜기 (area 0 에 대역 넣기)", {
     "c": ("router ospf 1\n router-id <라우터ID>\n network <대역> <와일드카드> area 0", "와일드카드는 마스크를 뒤집은 값 (255.255.255.0 → 0.0.0.255)"),
     "j": ("set routing-options router-id <라우터ID>\nset protocols ospf area 0.0.0.0 interface irb.<VLAN번호>", "OSPF 를 돌릴 인터페이스마다 한 줄"),
     "a": "router ospf\n ospf router-id <라우터ID>\n network <대역>/<프리픽스> area 0",
@@ -549,7 +553,7 @@ add("ospf", "routing", "config", "OSPF 켜기 (area 0 에 대역 넣기)", {
            "인터페이스 이름은 ip interface 로 만든 이름 그대로. 버전별 확인 필요"),
 }, keys="ospf 오에스피에프 동적 라우팅 area 에어리어 router-id")
 
-add("ospf-nbr", "routing", "show", "OSPF 이웃 보기 (Full 인지)", {
+add("ospf-nbr", "ospf", "show", "OSPF 이웃 보기 (Full 인지)", {
     "c": "show ip ospf neighbor",
     "j": "show ospf neighbor",
     "a": "show ip ospf neighbor",
@@ -557,7 +561,7 @@ add("ospf-nbr", "routing", "show", "OSPF 이웃 보기 (Full 인지)", {
     "o8": "show ip ospf neighbor",
 }, keys="ospf 이웃 neighbor full 인접 adjacency")
 
-add("ospf-intf", "routing", "show", "OSPF 인터페이스 보기 (area·DR·cost)", {
+add("ospf-intf", "ospf", "show", "OSPF 인터페이스 보기 (area·DR·cost)", {
     "c": "show ip ospf interface brief",
     "j": "show ospf interface",
     "a": "show ip ospf interface",
@@ -565,7 +569,7 @@ add("ospf-intf", "routing", "show", "OSPF 인터페이스 보기 (area·DR·cost
     "o8": "show ip ospf interface",
 }, keys="ospf 인터페이스 dr bdr cost area")
 
-add("ospf-route", "routing", "show", "OSPF 로 배운 경로 보기", {
+add("ospf-route", "ospf", "show", "OSPF 로 배운 경로 보기", {
     "c": "show ip route ospf",
     "j": "show route protocol ospf",
     "a": "show ip route ospf",
@@ -573,7 +577,7 @@ add("ospf-route", "routing", "show", "OSPF 로 배운 경로 보기", {
     "o8": ("show ip ospf routes", "버전별 확인 필요"),
 }, keys="ospf 경로 route 라우팅 테이블")
 
-add("bgp-show", "routing", "show", "BGP 이웃 상태 보기", {
+add("bgp-show", "bgp", "show", "BGP 이웃 상태 보기", {
     "c": "show ip bgp summary",
     "j": "show bgp summary",
     "a": "show ip bgp summary",
@@ -581,7 +585,7 @@ add("bgp-show", "routing", "show", "BGP 이웃 상태 보기", {
     "o8": "show ip bgp neighbors",
 }, keys="bgp 이웃 neighbor summary established")
 
-add("vrrp", "routing", "config", "VRRP 게이트웨이 이중화", {
+add("vrrp", "fhrp", "config", "VRRP 게이트웨이 이중화", {
     "c": ("interface vlan <VLAN번호>\n vrrp <그룹> ip <가상IP>\n vrrp <그룹> priority 110\n vrrp <그룹> preempt",
           "priority 높은 쪽이 Master. IOS-XE 16 이상 일부는 vrrp <그룹> address-family ipv4 방식(VRRPv3)"),
     "j": ("set interfaces irb unit <VLAN번호> family inet address <IP>/<프리픽스> vrrp-group <그룹> virtual-address <가상IP>\n"
@@ -597,7 +601,7 @@ add("vrrp", "routing", "config", "VRRP 게이트웨이 이중화", {
 }, desc="두 L3 스위치가 같은 가상 IP 를 나눠 갖고, PC 게이트웨이를 가상 IP 로 잡습니다. 양쪽 다 넣고 priority 만 다르게.",
    keys="vrrp 게이트웨이 이중화 가상 ip master backup 마스터 백업 failover")
 
-add("vrrp-show", "routing", "show", "VRRP 상태 보기 (Master/Backup)", {
+add("vrrp-show", "fhrp", "show", "VRRP 상태 보기 (Master/Backup)", {
     "c": "show vrrp brief",
     "j": "show vrrp summary",
     "a": "show vrrp",
@@ -605,7 +609,7 @@ add("vrrp-show", "routing", "show", "VRRP 상태 보기 (Master/Backup)", {
     "o8": "show vrrp",
 }, keys="vrrp 상태 master backup 확인")
 
-add("hsrp", "routing", "config", "HSRP 게이트웨이 이중화 (시스코 전용)", {
+add("hsrp", "fhrp", "config", "HSRP 게이트웨이 이중화 (시스코 전용)", {
     "c": ("interface vlan <VLAN번호>\n standby <그룹> ip <가상IP>\n standby <그룹> priority 110\n standby <그룹> preempt",
           "priority 높은 쪽이 Active. 다른 벤더와 섞여 있으면 VRRP 를 쓰세요"),
     "j": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
@@ -614,7 +618,7 @@ add("hsrp", "routing", "config", "HSRP 게이트웨이 이중화 (시스코 전�
     "o8": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
 }, keys="hsrp standby 게이트웨이 이중화 active standby 가상 ip")
 
-add("hsrp-show", "routing", "show", "HSRP 상태 보기", {
+add("hsrp-show", "fhrp", "show", "HSRP 상태 보기", {
     "c": "show standby brief",
     "j": (None, "HSRP 없음. VRRP 는 show vrrp summary"),
     "a": (None, "HSRP 없음. VRRP 는 show vrrp"),
@@ -622,7 +626,7 @@ add("hsrp-show", "routing", "show", "HSRP 상태 보기", {
     "o8": (None, "HSRP 없음. VRRP 는 show vrrp"),
 }, keys="hsrp standby 상태 active")
 
-add("dhcp-relay", "routing", "config", "DHCP 릴레이 (다른 대역의 DHCP 서버로 넘기기)", {
+add("dhcp-relay", "l3", "config", "DHCP 릴레이 (다른 대역의 DHCP 서버로 넘기기)", {
     "c": "interface vlan <VLAN번호>\n ip helper-address <서버IP>",
     "j": ("set forwarding-options dhcp-relay server-group DHCP-SRV <서버IP>\n"
           "set forwarding-options dhcp-relay group RELAY active-server-group DHCP-SRV\n"
@@ -853,6 +857,265 @@ add("factory", "save", "exec", "공장 초기화 (설정 모두 지우기)", {
     "o8": (None, "되돌릴 수 없는 작업이라 공식 절차 확인 필요"),
 }, keys="초기화 공장 factory reset erase 지우기 zeroize", desc="되돌릴 수 없습니다. 콘솔로 붙어 있는 상태에서만 하세요.")
 
+# ═════════════════════ 1.1.0 (2): L3 추가·OSPF·BGP·RIP·EIGRP·멀티캐스트 ═════════════════════
+AOS_LOAD = "AOS 는 라우팅 프로토콜을 쓰기 전에 ip load <프로토콜> 로 올립니다"
+VER = "버전별 확인 필요"
+
+# ── IP·정적 라우팅·DHCP
+add("loopback", "l3", "config", "루프백 주소 만들기 (라우터 ID 용)", {
+    "c": "interface Loopback0\n ip address <IP> 255.255.255.255",
+    "j": "set interfaces lo0 unit 0 family inet address <IP>/32",
+    "a": "interface lo\n ip address <IP>/32",
+    "o6": "ip interface Loopback0 address <IP>",
+    "o8": "ip interface Loopback0 address <IP>",
+}, keys="루프백 loopback lo0 라우터 id")
+
+add("router-id", "l3", "config", "라우터 ID 정하기", {
+    "c": ("router ospf 1\n router-id <라우터ID>", "BGP 는 router bgp <AS번호> 아래 bgp router-id <라우터ID>"),
+    "j": "set routing-options router-id <라우터ID>",
+    "a": ("router ospf\n ospf router-id <라우터ID>", "BGP 는 router bgp <AS번호> 아래 bgp router-id <라우터ID>"),
+    "o6": "ip router router-id <라우터ID>",
+    "o8": "ip router router-id <라우터ID>",
+}, desc="정하지 않으면 장비가 IP 중 하나를 골라 쓰는데, 그 IP 가 바뀌면 이웃이 다시 맺어집니다. 루프백 주소로 고정해 두세요.",
+   keys="router-id 라우터 id 아이디 ospf bgp")
+
+add("dhcp-show", "l3", "show", "DHCP 릴레이 설정 보기", {
+    "c": "show ip interface vlan <VLAN번호> | include Helper",
+    "j": "show dhcp relay binding",
+    "a": ("show ip dhcp-relay", VER),
+    "o6": "show ip helper",
+    "o8": ("show ip helper", VER),
+}, keys="dhcp 릴레이 relay 확인 helper")
+
+add("route-null", "l3", "config", "블랙홀(Null) 경로 만들기", {
+    "c": "ip route <대역> <마스크> Null0",
+    "j": "set routing-options static route <대역>/<프리픽스> discard",
+    "a": ("ip route <대역>/<프리픽스> null", VER),
+    "o6": (None, "공식 문서 확인 필요"),
+    "o8": (None, "공식 문서 확인 필요"),
+}, keys="null 블랙홀 discard 요약 경로")
+
+# ── OSPF
+add("ospf-passive", "ospf", "config", "OSPF 이웃을 맺지 않을 인터페이스 (passive)", {
+    "c": "router ospf 1\n passive-interface vlan <VLAN번호>",
+    "j": "set protocols ospf area 0.0.0.0 interface irb.<VLAN번호> passive",
+    "a": "router ospf\n passive-interface vlan<VLAN번호>",
+    "o6": ('ip ospf interface "vlan<VLAN번호>" type passive', VER),
+    "o8": ('ip ospf interface "vlan<VLAN번호>" passive', VER),
+}, desc="PC 만 있는 VLAN 은 대역은 광고하되, OSPF 패킷은 내보내지 않게 막아 둡니다.",
+   keys="passive 패시브 ospf 인터페이스 막기")
+
+add("ospf-cost", "ospf", "config", "OSPF 비용(cost) 바꾸기", {
+    "c": "interface vlan <VLAN번호>\n ip ospf cost <비용>",
+    "j": "set protocols ospf area 0.0.0.0 interface irb.<VLAN번호> metric <비용>",
+    "a": "interface vlan<VLAN번호>\n ip ospf cost <비용>",
+    "o6": 'ip ospf interface "vlan<VLAN번호>" cost <비용>',
+    "o8": 'ip ospf interface "vlan<VLAN번호>" cost <비용>',
+}, desc="비용이 낮은 쪽으로 트래픽이 갑니다. 두 경로 중 하나를 예비로 두고 싶으면 그쪽 비용을 올리세요.",
+   keys="ospf cost 비용 metric 경로 선택 우선")
+
+add("ospf-default", "ospf", "config", "OSPF 로 기본 경로(0.0.0.0/0) 뿌리기", {
+    "c": "router ospf 1\n default-information originate",
+    "j": ("set policy-options policy-statement OSPF-DEFAULT term 1 from route-filter 0.0.0.0/0 exact\n"
+          "set policy-options policy-statement OSPF-DEFAULT term 1 then accept\n"
+          "set protocols ospf export OSPF-DEFAULT", "기본 경로(정적)가 라우팅 표에 있어야 합니다"),
+    "a": "router ospf\n default-information originate",
+    "o6": (None, "AOS 는 route-map 으로 재분배합니다. 공식 문서 확인 필요"),
+    "o8": (None, "AOS 는 route-map 으로 재분배합니다. 공식 문서 확인 필요"),
+}, desc="인터넷 쪽 기본 경로를 가진 코어에서 아래 장비들로 뿌릴 때 씁니다.",
+   keys="ospf default 기본 경로 originate 디폴트")
+
+add("ospf-redist", "ospf", "config", "정적·직접 연결 경로를 OSPF 로 재분배", {
+    "c": "router ospf 1\n redistribute static subnets\n redistribute connected subnets",
+    "j": ("set policy-options policy-statement TO-OSPF term 1 from protocol [ static direct ]\n"
+          "set policy-options policy-statement TO-OSPF term 1 then accept\n"
+          "set protocols ospf export TO-OSPF", None),
+    "a": "router ospf\n redistribute static\n redistribute connected",
+    "o6": ("ip route-map <이름> action permit\nip redist static into ospf route-map <이름> status enable", VER),
+    "o8": ("ip route-map <이름> action permit\nip redist static into ospf route-map <이름> admin-state enable", VER),
+}, keys="재분배 redistribute redist static connected ospf")
+
+add("ospf-db", "ospf", "show", "OSPF 데이터베이스(LSDB) 보기", {
+    "c": "show ip ospf database",
+    "j": "show ospf database",
+    "a": "show ip ospf database",
+    "o6": "show ip ospf lsdb",
+    "o8": "show ip ospf lsdb",
+}, keys="ospf lsdb database lsa 데이터베이스")
+
+# ── BGP
+add("bgp-enable", "bgp", "config", "BGP 켜고 이웃 맺기", {
+    "c": "router bgp <AS번호>\n bgp router-id <라우터ID>\n neighbor <이웃IP> remote-as <상대AS>",
+    "j": ("set routing-options autonomous-system <AS번호>\n"
+          "set protocols bgp group <그룹이름> type external\n"
+          "set protocols bgp group <그룹이름> peer-as <상대AS>\n"
+          "set protocols bgp group <그룹이름> neighbor <이웃IP>", "같은 AS 끼리(iBGP)면 type internal, peer-as 없이"),
+    "a": ("router bgp <AS번호>\n bgp router-id <라우터ID>\n neighbor <이웃IP> remote-as <상대AS>", "모델에 따라 BGP 기능 라이선스가 필요할 수 있습니다"),
+    "o6": ("ip load bgp\nip bgp autonomous-system <AS번호>\nip bgp neighbor <이웃IP>\nip bgp neighbor <이웃IP> remote-as <상대AS>\n"
+           "ip bgp neighbor <이웃IP> status enable\nip bgp status enable", "AS 번호를 바꾸려면 먼저 ip bgp status disable. " + AOS_LOAD),
+    "o8": ("ip load bgp\nip bgp autonomous-system <AS번호>\nip bgp neighbor <이웃IP>\nip bgp neighbor <이웃IP> remote-as <상대AS>\n"
+           "ip bgp neighbor <이웃IP> admin-state enable\nip bgp admin-state enable", VER),
+}, keys="bgp 비지피 이웃 neighbor remote-as as 번호 피어 peer ebgp ibgp")
+
+add("bgp-network", "bgp", "config", "BGP 로 내 대역 광고하기", {
+    "c": ("router bgp <AS번호>\n network <대역> mask <마스크>", "라우팅 표에 똑같은 대역이 있어야 광고됩니다"),
+    "j": ("set policy-options policy-statement BGP-OUT term 1 from route-filter <대역>/<프리픽스> exact\n"
+          "set policy-options policy-statement BGP-OUT term 1 then accept\n"
+          "set protocols bgp group <그룹이름> export BGP-OUT", None),
+    "a": "router bgp <AS번호>\n network <대역>/<프리픽스>",
+    "o6": "ip bgp network <대역> <마스크>\nip bgp network <대역> <마스크> status enable",
+    "o8": ("ip bgp network <대역> <마스크>\nip bgp network <대역> <마스크> admin-state enable", VER),
+}, keys="bgp network 광고 advertise 대역")
+
+add("bgp-neighbor", "bgp", "show", "BGP 이웃 하나 자세히 보기", {
+    "c": "show ip bgp neighbors <이웃IP>",
+    "j": "show bgp neighbor <이웃IP>",
+    "a": "show ip bgp neighbors <이웃IP>",
+    "o6": "show ip bgp neighbors <이웃IP>",
+    "o8": "show ip bgp neighbors <이웃IP>",
+}, keys="bgp neighbor 이웃 자세히 detail")
+
+add("bgp-table", "bgp", "show", "BGP 경로 표 보기", {
+    "c": "show ip bgp",
+    "j": "show route protocol bgp",
+    "a": "show ip bgp",
+    "o6": "show ip bgp path",
+    "o8": "show ip bgp path",
+}, keys="bgp table 경로 표 path 라우트")
+
+add("bgp-adv", "bgp", "show", "이웃에게 보낸 경로 / 받은 경로 보기", {
+    "c": ("show ip bgp neighbors <이웃IP> advertised-routes\nshow ip bgp neighbors <이웃IP> routes",
+          "received-routes 는 soft-reconfiguration inbound 가 있어야 보입니다"),
+    "j": "show route advertising-protocol bgp <이웃IP>\nshow route receive-protocol bgp <이웃IP>",
+    "a": "show ip bgp neighbors <이웃IP> advertised-routes\nshow ip bgp neighbors <이웃IP> routes",
+    "o6": (None, "show ip bgp path 에서 확인"),
+    "o8": (None, "show ip bgp path 에서 확인"),
+}, keys="bgp advertised received 광고 받은 보낸 경로")
+
+add("bgp-clear", "bgp", "exec", "BGP 경로 다시 주고받기 (soft clear)", {
+    "c": "clear ip bgp <이웃IP> soft",
+    "j": "clear bgp neighbor <이웃IP> soft",
+    "a": "clear ip bgp <이웃IP> soft",
+    "o6": ("ip bgp neighbor <이웃IP> clear soft", VER),
+    "o8": ("ip bgp neighbor <이웃IP> clear soft", VER),
+}, desc="soft 를 빼면 세션이 끊겼다 다시 맺어집니다(서비스 끊김). 정책을 바꾼 뒤에는 soft 로 하세요.",
+   keys="bgp clear 리셋 soft 다시 갱신")
+
+add("bgp-shut", "bgp", "config", "BGP 이웃 잠시 끊기", {
+    "c": "router bgp <AS번호>\n neighbor <이웃IP> shutdown",
+    "j": "deactivate protocols bgp group <그룹이름> neighbor <이웃IP>",
+    "a": "router bgp <AS번호>\n neighbor <이웃IP> shutdown",
+    "o6": "ip bgp neighbor <이웃IP> status disable",
+    "o8": "ip bgp neighbor <이웃IP> admin-state disable",
+}, keys="bgp shutdown 끊기 비활성 deactivate 이웃")
+
+# ── RIP·EIGRP
+add("rip-enable", "rip", "config", "RIP v2 켜기", {
+    "c": "router rip\n version 2\n network <대역>\n no auto-summary",
+    "j": ("set protocols rip group <그룹이름> neighbor irb.<VLAN번호>", "알릴 경로는 export 정책으로 정합니다"),
+    "a": "router rip\n version 2\n network <대역>/<프리픽스>",
+    "o6": ('ip load rip\nip rip interface "vlan<VLAN번호>"\nip rip interface "vlan<VLAN번호>" status enable\nip rip status enable', AOS_LOAD),
+    "o8": ('ip load rip\nip rip interface "vlan<VLAN번호>"\nip rip interface "vlan<VLAN번호>" admin-state enable\nip rip admin-state enable', VER),
+}, keys="rip 립 라우팅 동적 version 2")
+
+add("rip-show", "rip", "show", "RIP 경로·이웃 보기", {
+    "c": ("show ip rip database", "경로만: show ip route rip"),
+    "j": ("show rip neighbor", "경로만: show route protocol rip"),
+    "a": ("show ip rip", "경로만: show ip route rip"),
+    "o6": "show ip rip routes",
+    "o8": "show ip rip routes",
+}, keys="rip 확인 경로 database")
+
+add("eigrp-enable", "rip", "config", "EIGRP 켜기 (시스코 전용)", {
+    "c": "router eigrp <AS번호>\n network <대역> <와일드카드>\n no auto-summary",
+    "j": (None, "EIGRP 는 시스코 전용입니다. 같은 일은 OSPF 로"),
+    "a": (None, "EIGRP 는 시스코 전용입니다. 같은 일은 OSPF 로"),
+    "o6": (None, "EIGRP 는 시스코 전용입니다. 같은 일은 OSPF 로"),
+    "o8": (None, "EIGRP 는 시스코 전용입니다. 같은 일은 OSPF 로"),
+}, keys="eigrp 이그알피 시스코 라우팅")
+
+add("eigrp-show", "rip", "show", "EIGRP 이웃·경로 보기 (시스코 전용)", {
+    "c": ("show ip eigrp neighbors", "경로만: show ip route eigrp"),
+    "j": (None, "EIGRP 는 시스코 전용"),
+    "a": (None, "EIGRP 는 시스코 전용"),
+    "o6": (None, "EIGRP 는 시스코 전용"),
+    "o8": (None, "EIGRP 는 시스코 전용"),
+}, keys="eigrp 이웃 확인")
+
+# ── 멀티캐스트
+add("igmp-snoop", "mcast", "config", "IGMP 스누핑 켜기", {
+    "c": ("ip igmp snooping\nip igmp snooping vlan <VLAN번호>", "보통 기본으로 켜져 있음"),
+    "j": "set protocols igmp-snooping vlan <이름>",
+    "a": ("interface vlan<VLAN번호>\n ip igmp snooping", "보통 기본으로 켜져 있음"),
+    "o6": ("ip multicast status enable", "VLAN 별: ip multicast vlan <VLAN번호> status enable"),
+    "o8": ("ip multicast admin-state enable", "VLAN 별: ip multicast vlan <VLAN번호> admin-state enable"),
+}, desc="멀티캐스트(IPTV·CCTV 스트림 등)를 받겠다는 포트에만 보냅니다. 끄면 VLAN 전체로 퍼집니다.",
+   keys="igmp snooping 스누핑 멀티캐스트 multicast iptv cctv")
+
+add("igmp-querier", "mcast", "config", "IGMP 질의자(querier) 켜기 (라우터 없는 L2 망)", {
+    "c": "ip igmp snooping querier",
+    "j": ("set protocols igmp-snooping vlan <이름> l2-querier source-address <IP>", VER),
+    "a": (None, "버전별로 다름. 공식 문서 확인 필요"),
+    "o6": ("ip multicast vlan <VLAN번호> querying enable", VER),
+    "o8": ("ip multicast vlan <VLAN번호> querying enable", VER),
+}, desc="멀티캐스트 라우터(PIM)가 없는 망은 질의자가 없으면 스누핑 표가 시간이 지나 사라져 영상이 끊길 수 있습니다.",
+   keys="querier 질의자 igmp query 쿼리어 l2")
+
+add("igmp-groups", "mcast", "show", "멀티캐스트 그룹·가입한 포트 보기", {
+    "c": ("show ip igmp snooping groups", "L3(라우터) 쪽: show ip igmp groups"),
+    "j": ("show igmp snooping membership", "L3 쪽: show igmp group"),
+    "a": ("show ip igmp groups", VER),
+    "o6": "show ip multicast group",
+    "o8": "show ip multicast group",
+}, keys="igmp 그룹 group 가입 membership 멀티캐스트 확인")
+
+add("mcast-routing", "mcast", "config", "멀티캐스트 라우팅 켜기", {
+    "c": ("ip multicast-routing", "일부 장비(3850 등)는 ip multicast-routing distributed"),
+    "j": (None, "PIM 을 켜면 됩니다"),
+    "a": "ip multicast-routing",
+    "o6": ("ip load pim", "PIM 을 쓰려면 먼저 올립니다"),
+    "o8": ("ip load pim", VER),
+}, keys="멀티캐스트 라우팅 multicast-routing 켜기")
+
+add("pim-sm", "mcast", "config", "인터페이스에 PIM-SM 켜기", {
+    "c": "interface vlan <VLAN번호>\n ip pim sparse-mode",
+    "j": "set protocols pim interface irb.<VLAN번호> mode sparse",
+    "a": ("interface vlan<VLAN번호>\n ip pim sparse-mode\n ip igmp", "IGMP 도 같이 켭니다"),
+    "o6": 'ip pim interface "vlan<VLAN번호>"\nip pim sparse status enable',
+    "o8": ('ip pim interface "vlan<VLAN번호>"\nip pim sparse admin-state enable', VER),
+}, keys="pim sparse sm 멀티캐스트 라우팅 인터페이스")
+
+add("pim-rp", "mcast", "config", "PIM RP 주소 정하기 (static RP)", {
+    "c": "ip pim rp-address <RP주소>",
+    "j": "set protocols pim rp static address <RP주소>",
+    "a": "ip pim rp-address <RP주소>",
+    "o6": ("ip pim static-rp 224.0.0.0/4 <RP주소>", "static-rp 를 따로 켜야 하는 버전도 있습니다"),
+    "o8": ("ip pim static-rp 224.0.0.0/4 <RP주소>", VER),
+}, desc="모든 PIM 라우터에 같은 RP 주소를 넣습니다. 보통 코어의 루프백 주소.",
+   keys="rp rendezvous static rp pim 멀티캐스트")
+
+add("pim-show", "mcast", "show", "PIM 이웃 보기", {
+    "c": "show ip pim neighbor",
+    "j": "show pim neighbors",
+    "a": "show ip pim sparse-mode neighbor",
+    "o6": "show ip pim neighbor",
+    "o8": "show ip pim neighbor",
+}, keys="pim 이웃 neighbor 확인")
+
+add("mroute", "mcast", "show", "멀티캐스트 라우팅 표 보기", {
+    "c": "show ip mroute",
+    "j": "show multicast route",
+    "a": "show ip mroute",
+    "o6": "show ip mroute",
+    "o8": "show ip mroute",
+}, keys="mroute 멀티캐스트 라우팅 표 경로")
+
+# 분야 안에서 보여 줄 순서 (적힌 것 먼저, 나머지는 넣은 순서)
+ORDER = ["ssh-on", "telnet-off", "telnet-on", "ssh-show", "ssh-client", "session-kill", "vty-acl", "session-timeout",
+         "ospf", "ospf-passive", "ospf-cost", "ospf-default", "ospf-redist", "ospf-nbr", "ospf-intf", "ospf-db", "ospf-route",
+         "bgp-enable", "bgp-network", "bgp-shut", "bgp-show", "bgp-neighbor", "bgp-table", "bgp-adv", "bgp-clear",
+         "igmp-snoop", "igmp-querier", "igmp-groups", "mcast-routing", "pim-sm", "pim-rp", "pim-show", "mroute"]
+
 
 def norm(v):
     out = {}
@@ -881,7 +1144,7 @@ def main():
         "vendors": VENDORS,
         "cats": [{"id": a, "name": b} for a, b in CATS],
         "aosConfigNote": AOS_CFG,
-        "entries": [{**e, "v": norm(e["v"])} for e in E],
+        "entries": [{**e, "v": norm(e["v"])} for e in sorted(E, key=lambda e: (ORDER.index(e["id"]) if e["id"] in ORDER else 999))],
     }
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = os.path.join(root, "internal", "server", "ui", "commands.json")

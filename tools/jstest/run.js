@@ -66,6 +66,19 @@ t('라우팅·이중화', () => {
   assert.strictEqual(acl.entry.id, 'vty-acl');
   assert.ok(fill(acl, 'j').includes('prefix-list MGMT 10.0.99.0/24'));
 });
+t('BGP·멀티캐스트·RIP', () => {
+  const b = top('router bgp 65001\nneighbor 10.0.0.2 remote-as 65002');
+  assert.strictEqual(b.entry.id, 'bgp-enable');
+  assert.ok(fill(b, 'j').includes('set routing-options autonomous-system 65001'));
+  assert.ok(fill(b, 'o6').includes('ip bgp neighbor 10.0.0.2 remote-as 65002'));
+  assert.strictEqual(top('sh ip bgp sum').entry.id, 'bgp-show');
+  const p = top('ip pim rp-address 10.255.0.1');
+  assert.strictEqual(p.entry.id, 'pim-rp');
+  assert.strictEqual(fill(p, 'j'), 'set protocols pim rp static address 10.255.0.1');
+  assert.strictEqual(top('ip igmp snooping vlan 20').entry.id, 'igmp-snoop');
+  assert.strictEqual(top('show ip mroute').entry.id, 'mroute');
+  assert.strictEqual(top('router ospf 1\npassive-interface vlan 10').entry.id, 'ospf-passive');
+});
 t('자리 표시만 있는 줄은 맞추지 않음', () => {
   const r = O.matchText('sh int status');
   assert.ok(!r.some((x) => x.entry.id === 'banner'));
