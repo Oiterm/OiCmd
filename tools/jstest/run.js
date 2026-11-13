@@ -79,6 +79,20 @@ t('BGP·멀티캐스트·RIP', () => {
   assert.strictEqual(top('show ip mroute').entry.id, 'mroute');
   assert.strictEqual(top('router ospf 1\npassive-interface vlan 10').entry.id, 'ospf-passive');
 });
+t('보안·ACL·QoS', () => {
+  const ps = top('interface gi1/0/5\nswitchport port-security maximum 2');
+  assert.strictEqual(ps.entry.id, 'port-sec');
+  assert.ok(fill(ps, 'j').includes('set switch-options interface ge-0/0/4.0 interface-mac-limit 2'));
+  const ds = top('ip dhcp snooping vlan 10\ninterface gi1/0/48\nip dhcp snooping trust');
+  assert.strictEqual(ds.entry.id, 'dhcp-snoop');
+  assert.ok(fill(ds, 'a').includes('interface port1.0.48\n ip dhcp snooping trust'));
+  assert.ok(fill(ds, 'a').includes('interface vlan10'));
+  assert.strictEqual(top('sh ip dhcp snooping binding').entry.id, 'dhcp-snoop-show');
+  assert.strictEqual(top('show access-lists').entry.id, 'acl-show');
+  assert.strictEqual(top('login block-for 300 attempts 5 within 60').entry.id, 'login-lockout');
+  assert.strictEqual(top('ip arp inspection vlan 10').entry.id, 'arp-inspect');
+  assert.strictEqual(top('spanning-tree guard root').entry.id, 'stp-rootguard');
+});
 t('자리 표시만 있는 줄은 맞추지 않음', () => {
   const r = O.matchText('sh int status');
   assert.ok(!r.some((x) => x.entry.id === 'banner'));

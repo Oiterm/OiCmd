@@ -11,7 +11,7 @@
 
 ## 할 수 있는 것
 
-- **명령어 사전**: 기본 정보, 인터페이스, VLAN, MAC·ARP·LLDP, LACP, 스패닝 트리, IP·정적 라우팅·DHCP, OSPF, BGP, RIP·EIGRP, VRRP·HSRP, 멀티캐스트(IGMP·PIM), SSH·텔넷 원격 접속, 관리·보안, 로그·장애, 미러링, 저장·백업 — 121개 항목을 벤더별로 나란히. 한글(맥 주소, 트렁크)이나 명령어 줄임말(`sh int status`)로 찾습니다.
+- **명령어 사전**: 기본 정보, 인터페이스, VLAN, MAC·ARP·LLDP, LACP, 스패닝 트리, IP·정적 라우팅·DHCP, OSPF, BGP, RIP·EIGRP, VRRP·HSRP, 멀티캐스트(IGMP·PIM), ACL, QoS, 포트 보안·802.1X, DHCP 스누핑·ARP 검사, SSH·텔넷 원격 접속, 장비 보안(AAA·RADIUS·SNMPv3), 관리, 로그·장애, 미러링, 저장·백업 — 152개 항목을 벤더별로 나란히. 한글(맥 주소, 트렁크)이나 명령어 줄임말(`sh int status`)로 찾습니다.
 - **명령어 변환**: 아는 명령어를 넣으면 다른 벤더 명령어로. 포트 이름(`Gi1/0/5` → `ge-0/0/4` → `port1.0.5` → `1/5` → `1/1/5`), MAC 형식, 마스크↔프리픽스도 바꿔 채웁니다.
 - **설정 만들기**: VLAN, access/trunk 포트, LACP, 관리 IP, NTP·syslog·SNMP·SSH 를 넣으면 벤더별 설정문.
 - **내 명령어**: 직접 추가하고, 기본 명령어를 고치고, 실제 장비에서 확인한 것은 ✓ 표시.

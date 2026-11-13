@@ -40,8 +40,13 @@ CATS = [
     ("rip", "RIP·EIGRP"),
     ("fhrp", "게이트웨이 이중화 (VRRP·HSRP)"),
     ("mcast", "멀티캐스트 (IGMP·PIM)"),
+    ("acl", "ACL (접근 제어)"),
+    ("qos", "QoS·속도 제한"),
+    ("psec", "포트 보안 (MAC 제한·802.1X)"),
+    ("dsec", "DHCP 스누핑·ARP 검사"),
     ("remote", "원격 접속 (SSH·텔넷)"),
-    ("mgmt", "관리·보안"),
+    ("devsec", "장비 보안 (AAA·RADIUS·암호)"),
+    ("mgmt", "관리 (계정·SNMP·NTP·로그)"),
     ("trouble", "로그·상태·장애"),
     ("misc", "미러링·스톰"),
     ("save", "저장·재부팅·백업"),
@@ -1109,6 +1114,331 @@ add("mroute", "mcast", "show", "멀티캐스트 라우팅 표 보기", {
     "o6": "show ip mroute",
     "o8": "show ip mroute",
 }, keys="mroute 멀티캐스트 라우팅 표 경로")
+
+# ═════════════════════ 1.2.0: ACL·QoS·포트 보안·DHCP 스누핑·장비 보안 ═════════════════════
+AOS_POLICY = "AOS 는 ACL 을 QoS 정책(condition·action·rule)으로 만들고 qos apply 를 쳐야 적용됩니다. 기본이 허용이라 막을 것만 넣으면 됩니다"
+VER = "버전별 확인 필요"
+
+# ───────────────────────── ACL ─────────────────────────
+add("acl-std", "acl", "config", "특정 IP 막기 (출발지 IP 로 거르기)", {
+    "c": ("ip access-list standard <이름>\n deny host <IP>\n permit any",
+          "ACL 끝에는 보이지 않는 deny any 가 있어 permit any 가 없으면 전부 막힙니다. 거는 법은 'ACL 포트·VLAN 에 걸기'"),
+    "j": ("set firewall family ethernet-switching filter <이름> term BLOCK from ip-source-address <IP>/32\n"
+          "set firewall family ethernet-switching filter <이름> term BLOCK then discard\n"
+          "set firewall family ethernet-switching filter <이름> term ALLOW then accept",
+          "L2 포트용 필터. VLAN 인터페이스(irb)에 걸 때는 family inet 과 source-address 를 씁니다"),
+    "a": ("access-list hardware <이름>\n deny ip <IP>/32 any\n permit ip any any",
+          "포트에 거는 ACL 은 hardware ACL 입니다"),
+    "o6": ("policy condition <이름>-c source ip <IP>\npolicy action <이름>-a disposition drop\n"
+           "policy rule <이름>-r condition <이름>-c action <이름>-a\nqos apply", AOS_POLICY),
+    "o8": ("policy condition <이름>-c source ip <IP>\npolicy action <이름>-a disposition drop\n"
+           "policy rule <이름>-r condition <이름>-c action <이름>-a\nqos apply", AOS_POLICY),
+}, desc="한 PC(IP)만 통신을 막을 때. 대역을 막으려면 host <IP> 대신 대역과 와일드카드/프리픽스를 넣습니다.",
+   keys="acl access-list 막기 차단 deny 출발지 source 표준 standard 필터 filter")
+
+add("acl-ext", "acl", "config", "출발지·목적지·포트 번호로 거르기 (확장 ACL)", {
+    "c": ("ip access-list extended <이름>\n deny tcp <대역> <와일드카드> host <서버IP> eq 23\n permit ip any any",
+          "예: 대역에서 서버로 가는 텔넷(23)만 막기. eq 뒤 번호를 바꾸면 다른 서비스 (22 SSH, 3389 원격 데스크톱, 445 파일 공유)"),
+    "j": ("set firewall family ethernet-switching filter <이름> term BLOCK from ip-source-address <대역>/<프리픽스>\n"
+          "set firewall family ethernet-switching filter <이름> term BLOCK from ip-destination-address <서버IP>/32\n"
+          "set firewall family ethernet-switching filter <이름> term BLOCK from ip-protocol tcp\n"
+          "set firewall family ethernet-switching filter <이름> term BLOCK from destination-port 23\n"
+          "set firewall family ethernet-switching filter <이름> term BLOCK then discard\n"
+          "set firewall family ethernet-switching filter <이름> term ALLOW then accept", ""),
+    "a": ("access-list hardware <이름>\n deny tcp <대역>/<프리픽스> <서버IP>/32 eq 23\n permit ip any any", ""),
+    "o6": ("policy condition <이름>-c source ip <대역> mask <마스크> destination ip <서버IP> destination tcp-port 23\n"
+           "policy action <이름>-a disposition drop\npolicy rule <이름>-r condition <이름>-c action <이름>-a\nqos apply", AOS_POLICY),
+    "o8": ("policy condition <이름>-c source ip <대역> mask <마스크> destination ip <서버IP> destination tcp-port 23\n"
+           "policy action <이름>-a disposition drop\npolicy rule <이름>-r condition <이름>-c action <이름>-a\nqos apply", AOS_POLICY),
+}, keys="acl extended 확장 목적지 destination 포트 번호 tcp udp eq 서비스 텔넷 막기")
+
+add("acl-apply", "acl", "config", "ACL 포트·VLAN 에 걸기", {
+    "c": ("interface <포트>\n ip access-group <이름> in",
+          "interface vlan <VLAN번호> 에 걸어도 됩니다. in 은 들어오는 쪽, out 은 나가는 쪽"),
+    "j": ("set interfaces <포트> unit 0 family ethernet-switching filter input <이름>",
+          "VLAN 에 걸 때는 set vlans <VLAN이름> forwarding-options filter input <이름>"),
+    "a": ("interface <포트>\n access-group <이름>", "hardware ACL 은 들어오는 쪽만 거릅니다"),
+    "o6": (None, "AOS 는 rule 을 만들고 qos apply 하면 장비 전체에 바로 걸립니다. 한 포트만 거르려면 condition 에 source port <포트> 를 넣습니다"),
+    "o8": (None, "AOS 는 rule 을 만들고 qos apply 하면 장비 전체에 바로 걸립니다. 한 포트만 거르려면 condition 에 source port <포트> 를 넣습니다"),
+}, keys="acl 걸기 적용 access-group apply in out 인터페이스")
+
+add("acl-show", "acl", "show", "ACL 보기 (맞은 횟수 포함)", {
+    "c": ("show access-lists", "줄마다 맞은 횟수(matches)가 보입니다"),
+    "j": ("show firewall filter <이름>", "횟수는 term 에 then count <이름> 을 넣어야 보입니다"),
+    "a": "show access-list",
+    "o6": ("show active policy rule", "설정만 볼 때는 show policy rule"),
+    "o8": ("show active policy rule", "설정만 볼 때는 show policy rule"),
+}, keys="acl 보기 확인 show access-list 횟수 matches 정책 policy")
+
+add("acl-remove", "acl", "config", "ACL 떼기·지우기", {
+    "c": "interface <포트>\n no ip access-group <이름> in\nexit\nno ip access-list extended <이름>",
+    "j": "delete interfaces <포트> unit 0 family ethernet-switching filter\ndelete firewall family ethernet-switching filter <이름>",
+    "a": "interface <포트>\n no access-group <이름>\nexit\nno access-list hardware <이름>",
+    "o6": "no policy rule <이름>-r\nqos apply",
+    "o8": "no policy rule <이름>-r\nqos apply",
+}, keys="acl 지우기 삭제 떼기 해제 no access-group remove")
+
+# ───────────────────────── QoS·속도 제한 ─────────────────────────
+add("rate-in", "qos", "config", "포트 들어오는 속도 제한", {
+    "c": ("policy-map <이름>\n class class-default\n  police <속도> conform-action transmit exceed-action drop\n"
+          "interface <포트>\n service-policy input <이름>",
+          "속도는 bps 단위 (100M = 100000000). 2960 계열은 class-default 대신 class-map 이 필요할 수 있음"),
+    "j": ("set firewall policer <이름> if-exceeding bandwidth-limit <속도> burst-size-limit 1m\n"
+          "set firewall policer <이름> then discard\n"
+          "set firewall family ethernet-switching filter <이름>-F term ALL then policer <이름>\n"
+          "set firewall family ethernet-switching filter <이름>-F term ALL then accept\n"
+          "set interfaces <포트> unit 0 family ethernet-switching filter input <이름>-F",
+          "속도는 100m 처럼 씁니다"),
+    "a": ("mls qos enable\npolicy-map <이름>\n class default\n  police single-rate <속도> 100000 100000 action drop-red\n"
+          "interface <포트>\n service-policy input <이름>",
+          "속도는 kbps 단위 (100M = 100000). " + VER),
+    "o6": ("qos port <포트> maximum ingress-bandwidth <속도>\nqos apply", "속도는 100M 처럼 씁니다"),
+    "o8": ("qos port <포트> maximum ingress-bandwidth <속도>\nqos apply", "속도는 100M 처럼 씁니다"),
+}, keys="속도 제한 대역폭 bandwidth rate limit police 폴리싱 ingress 업로드 qos")
+
+add("rate-out", "qos", "config", "포트 나가는 속도 제한", {
+    "c": ("policy-map <이름>\n class class-default\n  shape average <속도>\ninterface <포트>\n service-policy output <이름>",
+          "속도는 bps 단위. 2960 계열은 interface 에서 srr-queue bandwidth limit <퍼센트>"),
+    "j": ("set class-of-service interfaces <포트> shaping-rate <속도>", "속도는 100m 처럼 씁니다"),
+    "a": ("interface <포트>\n egress-rate-limit <속도>", "속도는 100m 처럼 씁니다"),
+    "o6": ("qos port <포트> maximum egress-bandwidth <속도>\nqos apply", "속도는 100M 처럼 씁니다"),
+    "o8": ("qos port <포트> maximum egress-bandwidth <속도>\nqos apply", "속도는 100M 처럼 씁니다"),
+}, keys="속도 제한 대역폭 shaping 셰이핑 egress 다운로드 rate limit qos")
+
+add("qos-trust", "qos", "config", "단말이 매긴 우선순위(DSCP) 믿기", {
+    "c": ("mls qos\ninterface <포트>\n mls qos trust dscp",
+          "Catalyst 9000(IOS-XE 16 이상)은 기본으로 DSCP 를 믿어 따로 안 해도 됩니다"),
+    "j": ("set class-of-service interfaces <포트> unit 0 classifiers dscp default", ""),
+    "a": "mls qos enable\ninterface <포트>\n mls qos trust dscp",
+    "o6": ("qos port <포트> trusted\nqos apply", ""),
+    "o8": ("qos port <포트> trusted\nqos apply", ""),
+}, desc="IP 전화·영상 장비가 표시한 우선순위를 스위치가 그대로 따르게 합니다.",
+   keys="qos trust 신뢰 dscp cos 우선순위 음성 전화 voip")
+
+add("voice-vlan", "qos", "config", "IP 전화용 음성 VLAN", {
+    "c": ("interface <포트>\n switchport mode access\n switchport access vlan <VLAN번호>\n switchport voice vlan <음성VLAN>",
+          "PC 는 access vlan, 전화는 voice vlan 으로 갑니다"),
+    "j": ("set switch-options voip interface <포트>.0 vlan <음성VLAN이름> forwarding-class expedited-forwarding", ""),
+    "a": ("interface <포트>\n switchport voice vlan <음성VLAN>", "전화가 LLDP-MED 로 VLAN 을 받아 갑니다"),
+    "o6": (None, "AOS 는 음성 VLAN 을 tagged 로 붙이고 LLDP-MED network-policy 로 전화에 알려 줍니다. " + VER),
+    "o8": (None, "AOS 는 음성 VLAN 을 tagged 로 붙이고 LLDP-MED network-policy 로 전화에 알려 줍니다. " + VER),
+}, keys="음성 voice vlan 전화 ip phone voip 인터넷전화")
+
+add("qos-show", "qos", "show", "QoS 설정·통계 보기", {
+    "c": "show policy-map interface <포트>",
+    "j": "show class-of-service interface <포트>",
+    "a": "show mls qos interface <포트>",
+    "o6": "show qos port <포트>",
+    "o8": "show qos port <포트>",
+}, keys="qos 보기 확인 policy-map 통계 드롭 drop")
+
+# ───────────────────────── 포트 보안 ─────────────────────────
+add("port-sec", "psec", "config", "포트에 MAC 개수 제한 (port security)", {
+    "c": ("interface <포트>\n switchport mode access\n switchport port-security\n switchport port-security maximum 2\n"
+          " switchport port-security violation restrict\n switchport port-security mac-address sticky",
+          "위반 동작 기본값 shutdown 은 포트가 err-disabled 로 꺼집니다. restrict 는 새 MAC 만 막고 로그를 남깁니다. sticky 는 배운 MAC 을 설정에 적어 둡니다"),
+    "j": ("set switch-options interface <포트>.0 interface-mac-limit 2 packet-action drop", ""),
+    "a": ("interface <포트>\n switchport port-security\n switchport port-security maximum 2\n switchport port-security violation restrict", ""),
+    "o6": ("port-security <포트>\nport-security <포트> maximum 2\nport-security <포트> violation restrict", VER),
+    "o8": ("port-security port <포트> admin-status enable\nport-security port <포트> maximum 2\nport-security port <포트> violation restrict", VER),
+}, desc="허브·공유기를 몰래 꽂아 여러 대가 붙는 것을 막습니다.",
+   keys="port security 포트 보안 mac 제한 개수 sticky 허브 공유기 violation")
+
+add("port-sec-show", "psec", "show", "포트 보안 상태·위반 보기", {
+    "c": "show port-security\nshow port-security interface <포트>",
+    "j": "show ethernet-switching interface <포트> detail",
+    "a": "show port-security interface <포트>",
+    "o6": "show port-security",
+    "o8": "show port-security",
+}, keys="port security 보기 위반 violation 확인")
+
+add("errdisable", "psec", "config", "위반으로 꺼진 포트 살리기 (err-disabled)", {
+    "c": ("interface <포트>\n shutdown\n no shutdown",
+          "꺼진 이유는 show interfaces status err-disabled. 자동으로 살리려면 errdisable recovery cause all / errdisable recovery interval 300"),
+    "j": ("clear ethernet-switching recovery-timeout interface <포트>",
+          "자동으로 살리려면 set switch-options recovery-timeout 300. " + VER),
+    "a": ("interface <포트>\n shutdown\n no shutdown", "꺼진 이유는 show interface <포트> 에서 확인"),
+    "o6": ("interfaces <포트> admin down\ninterfaces <포트> admin up", "포트 보안으로 막힌 경우 port-security <포트> release. " + VER),
+    "o8": ("interfaces port <포트> admin-state disable\ninterfaces port <포트> admin-state enable", VER),
+}, keys="err-disabled errdisable 에러 디스에이블 살리기 복구 recovery 꺼진 포트 bpdu 위반")
+
+add("dot1x", "psec", "config", "802.1X 포트 인증 켜기", {
+    "c": ("aaa new-model\naaa authentication dot1x default group radius\ndot1x system-auth-control\n"
+          "interface <포트>\n switchport mode access\n authentication port-control auto\n dot1x pae authenticator",
+          "RADIUS 서버 등록(장비 보안 분야)이 먼저 있어야 합니다. aaa new-model 은 로그인 방식도 바꾸니 로컬 계정을 먼저 만드세요"),
+    "j": ("set access radius-server <서버IP> secret <비밀키>\nset access profile <이름> authentication-order radius\n"
+          "set access profile <이름> radius authentication-server <서버IP>\n"
+          "set protocols dot1x authenticator authentication-profile-name <이름>\n"
+          "set protocols dot1x authenticator interface <포트> supplicant multiple", ""),
+    "a": ("aaa authentication dot1x default group radius\ninterface <포트>\n dot1x port-control auto",
+          "RADIUS 서버 등록이 먼저 있어야 합니다"),
+    "o6": ("aaa radius-server <이름> host <서버IP> key <비밀키>\naaa authentication 802.1x <이름>\n"
+           "vlan port mobile <포트>\nvlan port <포트> 802.1x enable", VER),
+    "o8": ("aaa radius-server <이름> host <서버IP> key <비밀키>\naaa device-authentication 802.1x <이름>\n"
+           "unp port <포트> port-type edge\nunp port <포트> 802.1x-authentication", "AOS8 은 UNP 로 설정합니다. " + VER),
+}, desc="NAC·인증 서버로 사용자를 확인한 뒤에만 포트를 열어 줍니다.",
+   keys="802.1x dot1x 인증 nac radius 포트 인증 authentication unp")
+
+add("dot1x-show", "psec", "show", "802.1X 인증 상태 보기", {
+    "c": ("show authentication sessions", "옛 IOS 는 show dot1x all"),
+    "j": "show dot1x interface",
+    "a": "show dot1x supplicant",
+    "o6": "show 802.1x users",
+    "o8": "show unp user",
+}, keys="802.1x dot1x 인증 상태 보기 세션 사용자")
+
+# ───────────────────────── DHCP 스누핑·ARP 검사 ─────────────────────────
+add("dhcp-snoop", "dsec", "config", "DHCP 스누핑 켜기 (불법 DHCP 서버 막기)", {
+    "c": ("ip dhcp snooping\nip dhcp snooping vlan <VLAN번호>\nno ip dhcp snooping information option\n"
+          "interface <업링크포트>\n ip dhcp snooping trust",
+          "DHCP 서버 쪽(업링크) 포트는 꼭 trust. option 82 를 끄지 않으면 일부 DHCP 서버가 응답을 버려 IP 를 못 받습니다"),
+    "j": ("set vlans <VLAN이름> forwarding-options dhcp-security\n"
+          "set vlans <VLAN이름> forwarding-options dhcp-security group UPLINK overrides trusted\n"
+          "set vlans <VLAN이름> forwarding-options dhcp-security group UPLINK interface <업링크포트>.0",
+          "트렁크 포트는 기본으로 trust 라 access 업링크일 때만 group 이 필요합니다"),
+    "a": ("service dhcp-snooping\ninterface vlan<VLAN번호>\n ip dhcp snooping\ninterface <업링크포트>\n ip dhcp snooping trust", ""),
+    "o6": ("ip helper dhcp-snooping enable\nip helper dhcp-snooping port <업링크포트> trust",
+           "VLAN 별로 켤 때는 ip helper dhcp-snooping vlan <VLAN번호> enable. " + VER),
+    "o8": ("dhcp-snooping admin-state enable\ndhcp-snooping port <업링크포트> trust", VER),
+}, desc="PC 쪽 포트에서 나오는 DHCP 응답(공유기 등)을 버립니다. 켠 VLAN 의 업링크를 trust 로 안 하면 전부 IP 를 못 받으니 주의.",
+   keys="dhcp snooping 스누핑 불법 dhcp 공유기 rogue trust 신뢰")
+
+add("dhcp-snoop-show", "dsec", "show", "DHCP 스누핑 표 보기 (IP·MAC·포트)", {
+    "c": "show ip dhcp snooping binding",
+    "j": "show dhcp-security binding",
+    "a": "show ip dhcp snooping binding",
+    "o6": "show ip helper dhcp-snooping binding",
+    "o8": "show dhcp-snooping binding",
+}, keys="dhcp snooping binding 바인딩 표 스누핑 확인")
+
+add("arp-inspect", "dsec", "config", "ARP 검사 켜기 (ARP 스푸핑 막기)", {
+    "c": ("ip arp inspection vlan <VLAN번호>\ninterface <업링크포트>\n ip arp inspection trust",
+          "DHCP 스누핑 표를 보고 검사해서 스누핑이 먼저 켜져 있어야 합니다. 고정 IP 장비는 ARP ACL 로 따로 허용"),
+    "j": ("set vlans <VLAN이름> forwarding-options dhcp-security arp-inspection", "DHCP 스누핑이 먼저 켜져 있어야 합니다"),
+    "a": ("interface vlan<VLAN번호>\n arp security", "DHCP 스누핑이 먼저 켜져 있어야 합니다"),
+    "o6": (None, "AOS 는 DHCP 스누핑의 IP 소스 필터(ip-source-filter)로 비슷하게 막습니다"),
+    "o8": (None, "AOS 는 DHCP 스누핑의 IP 소스 필터(ip-source-filter)로 비슷하게 막습니다"),
+}, keys="arp inspection dai 스푸핑 spoofing arp 검사 위조 중간자")
+
+add("ip-source-guard", "dsec", "config", "IP 위조 막기 (IP source guard)", {
+    "c": ("interface <포트>\n ip verify source", "DHCP 스누핑 표에 있는 IP 만 통과합니다. 고정 IP 장비는 ip source binding 으로 따로 등록"),
+    "j": ("set vlans <VLAN이름> forwarding-options dhcp-security ip-source-guard", ""),
+    "a": (None, "AW+ 는 DHCP 스누핑 ACL(access-list hardware … dhcpsnooping)로 막습니다. 공식 문서 확인 필요"),
+    "o6": ("ip helper dhcp-snooping port <포트> ip-source-filter enable", VER),
+    "o8": ("dhcp-snooping port <포트> ip-source-filter enable", VER),
+}, keys="ip source guard ipsg 소스 가드 위조 고정 ip 바꾸기 막기 ip-source-filter")
+
+add("dhcp-snoop-off", "dsec", "config", "DHCP 스누핑 끄기 (IP 를 못 받을 때)", {
+    "c": "no ip dhcp snooping",
+    "j": "delete vlans <VLAN이름> forwarding-options dhcp-security",
+    "a": "no service dhcp-snooping",
+    "o6": "ip helper dhcp-snooping disable",
+    "o8": ("dhcp-snooping admin-state disable", VER),
+}, keys="dhcp snooping 끄기 해제 ip 못 받음 장애")
+
+# ───────────────────────── 장비 보안 ─────────────────────────
+add("pw-encrypt", "devsec", "config", "설정 파일 비밀번호 숨기기", {
+    "c": ("service password-encryption\nenable secret <비밀번호>",
+          "password-encryption 은 약한 암호(type 7)라 쉽게 풀립니다. 계정은 secret 으로 만드세요"),
+    "j": (None, "Junos 는 비밀번호를 항상 암호화해 저장합니다"),
+    "a": "service password-encryption",
+    "o6": (None, "AOS 는 비밀번호를 암호화해 저장합니다"),
+    "o8": (None, "AOS 는 비밀번호를 암호화해 저장합니다"),
+}, keys="비밀번호 암호화 password encryption enable secret 숨기기 평문")
+
+add("pw-policy", "devsec", "config", "비밀번호 규칙 (최소 길이·복잡도)", {
+    "c": ("security passwords min-length 9", "IOS-XE 17 은 aaa common-criteria policy 로 더 자세히 정할 수 있습니다"),
+    "j": "set system login password minimum-length 9\nset system login password change-type character-sets\nset system login password minimum-changes 3",
+    "a": "security-password minimum-length 9\nsecurity-password minimum-categories 3",
+    "o6": ("user password-size min 9\nuser password-policy min-uppercase 1\nuser password-policy min-digit 1", VER),
+    "o8": ("user password-size min 9\nuser password-policy min-uppercase 1\nuser password-policy min-digit 1", VER),
+}, desc="공공기관 보안 점검에서 자주 보는 항목입니다. 숫자는 기관 기준에 맞추세요.",
+   keys="비밀번호 규칙 정책 password policy 길이 복잡도 보안 점검")
+
+add("login-lockout", "devsec", "config", "로그인 실패하면 잠그기", {
+    "c": ("login block-for 300 attempts 5 within 60", "60초 안에 5번 틀리면 300초 동안 로그인을 막습니다"),
+    "j": "set system login retry-options tries-before-disconnect 5\nset system login retry-options lockout-period 5",
+    "a": "aaa local authentication attempts max-fail 5\naaa local authentication attempts lockout-time 300",
+    "o6": ("user lockout-threshold 5\nuser lockout-window 5\nuser lockout-duration 5", "시간은 분 단위. " + VER),
+    "o8": ("user lockout-threshold 5\nuser lockout-window 5\nuser lockout-duration 5", "시간은 분 단위. " + VER),
+}, keys="로그인 실패 잠금 lockout 무차별 brute force 계정 잠금 보안 점검")
+
+add("radius-server", "devsec", "config", "RADIUS 서버 등록", {
+    "c": ("radius server <이름>\n address ipv4 <서버IP> auth-port 1812 acct-port 1813\n key <비밀키>",
+          "옛 IOS 는 radius-server host <서버IP> key <비밀키>"),
+    "j": "set system radius-server <서버IP> secret <비밀키>",
+    "a": "radius-server host <서버IP> key <비밀키>",
+    "o6": "aaa radius-server <이름> host <서버IP> key <비밀키>",
+    "o8": "aaa radius-server <이름> host <서버IP> key <비밀키>",
+}, keys="radius 라디우스 서버 등록 인증 서버 nac key")
+
+add("tacacs-server", "devsec", "config", "TACACS+ 서버 등록", {
+    "c": ("tacacs server <이름>\n address ipv4 <서버IP>\n key <비밀키>", "옛 IOS 는 tacacs-server host <서버IP> key <비밀키>"),
+    "j": "set system tacplus-server <서버IP> secret <비밀키>",
+    "a": "tacacs-server host <서버IP> key <비밀키>",
+    "o6": "aaa tacacs+-server <이름> host <서버IP> key <비밀키>",
+    "o8": "aaa tacacs+-server <이름> host <서버IP> key <비밀키>",
+}, keys="tacacs 태카스 서버 등록 인증 aaa key")
+
+add("aaa-login", "devsec", "config", "장비 로그인을 인증 서버로 (서버 죽으면 로컬 계정)", {
+    "c": ("aaa new-model\naaa authentication login default group radius local\naaa authorization exec default group radius local",
+          "aaa new-model 을 치면 로그인 방식이 바로 바뀝니다. 로컬 계정을 먼저 만들고, 접속 하나는 열어 둔 채 다른 창에서 확인하세요. TACACS+ 면 radius 대신 tacacs+"),
+    "j": ("set system authentication-order [ radius password ]", "password 가 로컬 계정입니다. TACACS+ 면 tacplus"),
+    "a": ("aaa authentication login default group radius local", "TACACS+ 면 group tacacs+"),
+    "o6": ("aaa authentication default <이름> local", "<이름> 은 등록한 RADIUS/TACACS+ 서버 이름"),
+    "o8": ("aaa authentication default <이름> local", "<이름> 은 등록한 RADIUS/TACACS+ 서버 이름"),
+}, keys="aaa 인증 로그인 radius tacacs 서버 인증 authentication login local")
+
+add("snmpv3", "devsec", "config", "SNMPv3 사용자 만들기 (암호화)", {
+    "c": ("snmp-server group <그룹> v3 priv\nsnmp-server user <사용자> <그룹> v3 auth sha <비밀번호> priv aes 128 <비밀키>",
+          "만든 사용자는 show run 에 안 보입니다. 확인은 show snmp user"),
+    "j": ("set snmp v3 usm local-engine user <사용자> authentication-sha authentication-password <비밀번호>\n"
+          "set snmp v3 usm local-engine user <사용자> privacy-aes128 privacy-password <비밀키>\n"
+          "set snmp v3 vacm security-to-group security-model usm security-name <사용자> group <그룹>\n"
+          "set snmp v3 vacm access group <그룹> default-context-prefix security-model usm security-level privacy read-view all\n"
+          "set snmp view all oid .1 include", ""),
+    "a": "snmp-server view all 1 included\nsnmp-server group <그룹> priv read all\nsnmp-server user <사용자> <그룹> auth sha <비밀번호> priv aes <비밀키>",
+    "o6": ("user <사용자> password <비밀번호> read-only all sha+aes\nsnmp security privacy all",
+           "AOS 는 비밀번호 하나로 인증·암호화를 같이 합니다. " + VER),
+    "o8": ("user <사용자> password <비밀번호> read-only all sha+aes\nsnmp security privacy all",
+           "AOS 는 비밀번호 하나로 인증·암호화를 같이 합니다. " + VER),
+}, desc="v2c 커뮤니티는 평문이라 보안 점검에서 v3 를 요구하는 경우가 많습니다. NMS 쪽에도 같은 사용자·비밀번호를 넣어야 합니다.",
+   keys="snmp v3 snmpv3 암호화 보안 점검 usm 사용자 nms")
+
+add("snmp-v2-off", "devsec", "config", "SNMP v2c 커뮤니티 지우기", {
+    "c": "no snmp-server community <커뮤니티>",
+    "j": "delete snmp community <커뮤니티>",
+    "a": "no snmp-server community <커뮤니티>",
+    "o6": ("no snmp community-map <커뮤니티>", VER),
+    "o8": ("no snmp community-map <커뮤니티>", VER),
+}, keys="snmp v2c 커뮤니티 public private 지우기 삭제 보안 점검")
+
+add("http-off", "devsec", "config", "웹 관리(HTTP) 끄기", {
+    "c": ("no ip http server\nno ip http secure-server", "HTTPS 로 웹 관리를 쓸 거면 secure-server 는 남겨 둡니다"),
+    "j": "delete system services web-management http",
+    "a": "no service http",
+    "o6": "no ip service http",
+    "o8": "no ip service http",
+}, keys="http 웹 관리 끄기 web gui 서비스 보안 점검 취약점")
+
+add("unused-svc-off", "devsec", "config", "안 쓰는 서비스 끄기 (FTP·CDP 등)", {
+    "c": ("no service pad\nno ip bootp server\nno ip source-route\nno cdp run",
+          "CDP 를 끄면 이웃 장비 정보가 안 보입니다. 필요하면 남겨 두고 바깥쪽 포트에서만 no cdp enable"),
+    "j": "delete system services ftp\ndelete system services telnet",
+    "a": "no service ftp\nno service telnet",
+    "o6": "no ip service ftp\nno ip service telnet",
+    "o8": "no ip service ftp\nno ip service telnet",
+}, keys="서비스 끄기 ftp cdp bootp 보안 점검 취약점 하드닝 hardening")
+
+# ───────────────────────── 스패닝 트리 보강 ─────────────────────────
+add("stp-rootguard", "stp", "config", "루트 브리지 뺏기 막기 (root guard)", {
+    "c": "interface <포트>\n spanning-tree guard root",
+    "j": "set protocols rstp interface <포트> no-root-port",
+    "a": "interface <포트>\n spanning-tree guard root",
+    "o6": ("bridge cist <포트> restricted-role enable", VER),
+    "o8": ("spantree cist port <포트> restricted-role enable", VER),
+}, desc="아래쪽 스위치가 우선순위를 낮게 잡아 루트가 되려 하면 그 포트를 막습니다.",
+   keys="root guard 루트 가드 스패닝 stp 루트 뺏기")
 
 # 분야 안에서 보여 줄 순서 (적힌 것 먼저, 나머지는 넣은 순서)
 ORDER = ["ssh-on", "telnet-off", "telnet-on", "ssh-show", "ssh-client", "session-kill", "vty-acl", "session-timeout",

@@ -118,7 +118,7 @@
     if (lines.length === 1) return O.matchCommand(lines[0], src).slice(0, 8);
     const agg = new Map();
     for (const l of lines) {
-      for (const r of O.matchCommand(l, src).slice(0, 12)) {
+      for (const r of O.matchCommand(l, src).slice(0, 80)) {
         const a = agg.get(r.entry.id);
         if (!a) agg.set(r.entry.id, { ...r, caps: { ...r.caps }, hits: 1, lines: [r.line] });
         else {
@@ -200,7 +200,7 @@
     const out = cmd.replace(PH, (all, name) => {
       let v = vals[name];
       if (v == null) return all;
-      if ((name === '포트' || name === '받는포트') && src !== vid) {
+      if ((name === '포트' || name === '받는포트' || name === '업링크포트') && src !== vid) {
         const n = O.portNumber(v, src);
         if (n) { v = O.portName(n, vid); changed.add(name); }
       } else if (name === 'MAC') {
