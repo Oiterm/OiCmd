@@ -53,6 +53,19 @@ t('마스크 ↔ 프리픽스', () => {
   const r = top('ip address 10.0.10.2 255.255.255.0');
   assert.ok(fill(r, 'a').includes('ip address 10.0.10.2/24'));
 });
+t('라우팅·이중화', () => {
+  const o = top('router ospf 1\nnetwork 10.0.10.0 0.0.0.255 area 0');
+  assert.strictEqual(o.entry.id, 'ospf');
+  assert.ok(fill(o, 'a').includes('network 10.0.10.0/24 area 0'));
+  const v = top('vrrp 1 ip 10.0.10.1');
+  assert.strictEqual(v.entry.id, 'vrrp');
+  assert.ok(fill(v, 'o6').includes('vrrp 1 <VLAN번호> ip 10.0.10.1'));
+  assert.strictEqual(top('show standby brief').entry.id, 'hsrp-show');
+  assert.strictEqual(top('sh ip ospf nei').entry.id, 'ospf-nbr');
+  const acl = top('ip access-list standard MGMT\npermit 10.0.99.0 0.0.0.255');
+  assert.strictEqual(acl.entry.id, 'vty-acl');
+  assert.ok(fill(acl, 'j').includes('prefix-list MGMT 10.0.99.0/24'));
+});
 t('자리 표시만 있는 줄은 맞추지 않음', () => {
   const r = O.matchText('sh int status');
   assert.ok(!r.some((x) => x.entry.id === 'banner'));

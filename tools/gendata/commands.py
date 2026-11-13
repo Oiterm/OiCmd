@@ -34,7 +34,9 @@ CATS = [
     ("l2", "MAC·ARP·이웃 장비"),
     ("lag", "포트 묶기 (LACP)"),
     ("stp", "스패닝 트리"),
-    ("l3", "IP·라우팅"),
+    ("l3", "IP·정적 라우팅"),
+    ("routing", "라우팅 프로토콜·이중화"),
+    ("remote", "원격 접속 (SSH·텔넷)"),
     ("mgmt", "관리·보안"),
     ("trouble", "로그·상태·장애"),
     ("misc", "미러링·스톰"),
@@ -474,6 +476,162 @@ add("traceroute", "l3", "exec", "경로 추적 (traceroute)", {
     "o8": "traceroute <대상IP>",
 }, keys="traceroute tracert 경로 추적")
 
+# ───────────────────────── 원격 접속 (SSH·텔넷) ─────────────────────────
+add("ssh-show", "remote", "show", "SSH 켜졌는지·설정 보기", {
+    "c": ("show ip ssh", "접속한 SSH 세션: show ssh"),
+    "j": "show configuration system services",
+    "a": "show ssh server",
+    "o6": ("show aaa authentication", "ssh·telnet·http 가 어떤 인증으로 켜져 있는지"),
+    "o8": ("show aaa authentication", "ssh·telnet·http 가 어떤 인증으로 켜져 있는지"),
+}, keys="ssh 상태 확인 켜짐 서버 22")
+
+add("telnet-on", "remote", "config", "텔넷 켜기", {
+    "c": ("line vty 0 15\n login local\n transport input telnet ssh", "로그인할 계정(username)이 있어야 합니다. 보안 점검에서는 텔넷을 끄라고 합니다"),
+    "j": "set system services telnet",
+    "a": "service telnet",
+    "o6": "aaa authentication telnet local",
+    "o8": "aaa authentication telnet local",
+}, keys="텔넷 telnet 켜기 23 원격")
+
+add("vty-acl", "remote", "config", "원격 접속 허용 IP 제한 (관리 PC 만)", {
+    "c": ("ip access-list standard MGMT\n permit <대역> <와일드카드>\nline vty 0 15\n access-class MGMT in",
+          "와일드카드는 마스크를 뒤집은 값 (255.255.255.0 → 0.0.0.255). 지금 쓰는 PC 대역이 빠지면 바로 끊깁니다"),
+    "j": ("set policy-options prefix-list MGMT <대역>/<프리픽스>\n"
+          "set firewall family inet filter PROTECT-RE term SSH from source-prefix-list MGMT\n"
+          "set firewall family inet filter PROTECT-RE term SSH from protocol tcp\n"
+          "set firewall family inet filter PROTECT-RE term SSH from destination-port ssh\n"
+          "set firewall family inet filter PROTECT-RE term SSH then accept\n"
+          "set firewall family inet filter PROTECT-RE term SSH-DROP from protocol tcp\n"
+          "set firewall family inet filter PROTECT-RE term SSH-DROP from destination-port ssh\n"
+          "set firewall family inet filter PROTECT-RE term SSH-DROP then discard\n"
+          "set firewall family inet filter PROTECT-RE term ALL then accept\n"
+          "set interfaces lo0 unit 0 family inet filter input PROTECT-RE",
+          "lo0 필터는 잘못 넣으면 접속이 끊깁니다. commit confirmed 5 로 넣으세요"),
+    "a": (None, "버전에 따라 다름 (line vty 의 access-class 등). 공식 문서 확인 필요"),
+    "o6": (None, "공식 문서 확인 필요"),
+    "o8": (None, "공식 문서 확인 필요"),
+}, keys="acl 접속 제한 허용 ip vty access-class 관리 pc 보안 점검")
+
+add("session-timeout", "remote", "config", "접속 자동 끊김 시간 (유휴 시간)", {
+    "c": ("line vty 0 15\n exec-timeout 10 0", "10분 0초. 콘솔은 line con 0"),
+    "j": (None, "로그인 클래스의 idle-timeout 으로 정합니다. 공식 문서 확인 필요"),
+    "a": ("line vty 0 32\n exec-timeout 10 0", "vty 번호 범위는 장비마다 다를 수 있습니다"),
+    "o6": ("session timeout cli 10", "분 단위"),
+    "o8": ("session timeout cli 10", "분 단위"),
+}, keys="타임아웃 timeout 유휴 자동 로그아웃 exec-timeout 세션 보안 점검")
+
+add("ssh-client", "remote", "exec", "이 장비에서 다른 장비로 SSH·텔넷 접속", {
+    "c": "ssh -l <사용자> <대상IP>\ntelnet <대상IP>",
+    "j": "ssh <사용자>@<대상IP>\ntelnet <대상IP>",
+    "a": ("ssh <대상IP>\ntelnet <대상IP>", "사용자 이름을 정하는 방법은 버전별 확인 필요"),
+    "o6": "ssh <대상IP>\ntelnet <대상IP>",
+    "o8": "ssh <대상IP>\ntelnet <대상IP>",
+}, keys="ssh 접속 telnet 점프 다른 장비 원격 클라이언트")
+
+add("session-kill", "remote", "exec", "남의 접속 세션 끊기", {
+    "c": ("show users\nclear line vty <번호>", "show users 에서 번호 확인"),
+    "j": "request system logout user <사용자>",
+    "a": ("show users\nclear line vty <번호>", "버전별 확인 필요"),
+    "o6": ("who\nkill <번호>", "who 에서 세션 번호 확인"),
+    "o8": ("who\nkill <번호>", "who 에서 세션 번호 확인"),
+}, keys="세션 끊기 강제 로그아웃 kill clear line 접속자")
+
+# ───────────────────────── 라우팅 프로토콜·이중화 ─────────────────────────
+add("ospf", "routing", "config", "OSPF 켜기 (area 0 에 대역 넣기)", {
+    "c": ("router ospf 1\n router-id <라우터ID>\n network <대역> <와일드카드> area 0", "와일드카드는 마스크를 뒤집은 값 (255.255.255.0 → 0.0.0.255)"),
+    "j": ("set routing-options router-id <라우터ID>\nset protocols ospf area 0.0.0.0 interface irb.<VLAN번호>", "OSPF 를 돌릴 인터페이스마다 한 줄"),
+    "a": "router ospf\n ospf router-id <라우터ID>\n network <대역>/<프리픽스> area 0",
+    "o6": ('ip load ospf\nip ospf area 0.0.0.0\nip ospf interface "vlan<VLAN번호>"\nip ospf interface "vlan<VLAN번호>" area 0.0.0.0\n'
+           'ip ospf interface "vlan<VLAN번호>" status enable\nip ospf status enable',
+           "인터페이스 이름은 ip interface 로 만든 이름 그대로 (예: vlan10). 라우터 ID 는 ip router router-id <라우터ID>"),
+    "o8": ('ip load ospf\nip ospf area 0.0.0.0\nip ospf interface "vlan<VLAN번호>"\nip ospf interface "vlan<VLAN번호>" area 0.0.0.0\n'
+           'ip ospf interface "vlan<VLAN번호>" admin-state enable\nip ospf admin-state enable',
+           "인터페이스 이름은 ip interface 로 만든 이름 그대로. 버전별 확인 필요"),
+}, keys="ospf 오에스피에프 동적 라우팅 area 에어리어 router-id")
+
+add("ospf-nbr", "routing", "show", "OSPF 이웃 보기 (Full 인지)", {
+    "c": "show ip ospf neighbor",
+    "j": "show ospf neighbor",
+    "a": "show ip ospf neighbor",
+    "o6": "show ip ospf neighbor",
+    "o8": "show ip ospf neighbor",
+}, keys="ospf 이웃 neighbor full 인접 adjacency")
+
+add("ospf-intf", "routing", "show", "OSPF 인터페이스 보기 (area·DR·cost)", {
+    "c": "show ip ospf interface brief",
+    "j": "show ospf interface",
+    "a": "show ip ospf interface",
+    "o6": "show ip ospf interface",
+    "o8": "show ip ospf interface",
+}, keys="ospf 인터페이스 dr bdr cost area")
+
+add("ospf-route", "routing", "show", "OSPF 로 배운 경로 보기", {
+    "c": "show ip route ospf",
+    "j": "show route protocol ospf",
+    "a": "show ip route ospf",
+    "o6": ("show ip ospf routes", "버전별 확인 필요"),
+    "o8": ("show ip ospf routes", "버전별 확인 필요"),
+}, keys="ospf 경로 route 라우팅 테이블")
+
+add("bgp-show", "routing", "show", "BGP 이웃 상태 보기", {
+    "c": "show ip bgp summary",
+    "j": "show bgp summary",
+    "a": "show ip bgp summary",
+    "o6": "show ip bgp neighbors",
+    "o8": "show ip bgp neighbors",
+}, keys="bgp 이웃 neighbor summary established")
+
+add("vrrp", "routing", "config", "VRRP 게이트웨이 이중화", {
+    "c": ("interface vlan <VLAN번호>\n vrrp <그룹> ip <가상IP>\n vrrp <그룹> priority 110\n vrrp <그룹> preempt",
+          "priority 높은 쪽이 Master. IOS-XE 16 이상 일부는 vrrp <그룹> address-family ipv4 방식(VRRPv3)"),
+    "j": ("set interfaces irb unit <VLAN번호> family inet address <IP>/<프리픽스> vrrp-group <그룹> virtual-address <가상IP>\n"
+          "set interfaces irb unit <VLAN번호> family inet address <IP>/<프리픽스> vrrp-group <그룹> priority 110\n"
+          "set interfaces irb unit <VLAN번호> family inet address <IP>/<프리픽스> vrrp-group <그룹> accept-data",
+          "<IP> 는 이 장비의 실제 IP. accept-data 를 넣어야 가상 IP 로 ping 이 됩니다"),
+    "a": ("router vrrp <그룹> vlan<VLAN번호>\n virtual-ip <가상IP> backup\n priority 110\n enable",
+          "가상 IP 가 이 장비의 실제 IP 와 같으면 backup 대신 master"),
+    "o6": ("vrrp <그룹> <VLAN번호>\nvrrp <그룹> <VLAN번호> ip <가상IP>\nvrrp <그룹> <VLAN번호> priority 110\nvrrp <그룹> <VLAN번호> enable",
+           "값을 바꿀 때는 먼저 vrrp <그룹> <VLAN번호> disable"),
+    "o8": ("vrrp <그룹> <VLAN번호>\nvrrp <그룹> <VLAN번호> address <가상IP>\nvrrp <그룹> <VLAN번호> priority 110\nvrrp <그룹> <VLAN번호> admin-state enable",
+           "버전별 확인 필요. 값을 바꿀 때는 먼저 admin-state disable"),
+}, desc="두 L3 스위치가 같은 가상 IP 를 나눠 갖고, PC 게이트웨이를 가상 IP 로 잡습니다. 양쪽 다 넣고 priority 만 다르게.",
+   keys="vrrp 게이트웨이 이중화 가상 ip master backup 마스터 백업 failover")
+
+add("vrrp-show", "routing", "show", "VRRP 상태 보기 (Master/Backup)", {
+    "c": "show vrrp brief",
+    "j": "show vrrp summary",
+    "a": "show vrrp",
+    "o6": "show vrrp",
+    "o8": "show vrrp",
+}, keys="vrrp 상태 master backup 확인")
+
+add("hsrp", "routing", "config", "HSRP 게이트웨이 이중화 (시스코 전용)", {
+    "c": ("interface vlan <VLAN번호>\n standby <그룹> ip <가상IP>\n standby <그룹> priority 110\n standby <그룹> preempt",
+          "priority 높은 쪽이 Active. 다른 벤더와 섞여 있으면 VRRP 를 쓰세요"),
+    "j": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
+    "a": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
+    "o6": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
+    "o8": (None, "HSRP 는 시스코 전용입니다. 같은 일은 VRRP 로"),
+}, keys="hsrp standby 게이트웨이 이중화 active standby 가상 ip")
+
+add("hsrp-show", "routing", "show", "HSRP 상태 보기", {
+    "c": "show standby brief",
+    "j": (None, "HSRP 없음. VRRP 는 show vrrp summary"),
+    "a": (None, "HSRP 없음. VRRP 는 show vrrp"),
+    "o6": (None, "HSRP 없음. VRRP 는 show vrrp"),
+    "o8": (None, "HSRP 없음. VRRP 는 show vrrp"),
+}, keys="hsrp standby 상태 active")
+
+add("dhcp-relay", "routing", "config", "DHCP 릴레이 (다른 대역의 DHCP 서버로 넘기기)", {
+    "c": "interface vlan <VLAN번호>\n ip helper-address <서버IP>",
+    "j": ("set forwarding-options dhcp-relay server-group DHCP-SRV <서버IP>\n"
+          "set forwarding-options dhcp-relay group RELAY active-server-group DHCP-SRV\n"
+          "set forwarding-options dhcp-relay group RELAY interface irb.<VLAN번호>"),
+    "a": "service dhcp-relay\ninterface vlan<VLAN번호>\n ip dhcp-relay server-address <서버IP>",
+    "o6": ("ip helper address <서버IP>", "장비 전체에 걸립니다"),
+    "o8": ("ip helper address <서버IP>", "버전에 따라 ip dhcp relay 명령으로 바뀐 경우가 있어 확인 필요"),
+}, keys="dhcp 릴레이 relay helper 헬퍼 ip helper-address 서버")
+
 # ───────────────────────── 관리·보안 ─────────────────────────
 add("hostname", "mgmt", "config", "장비 이름 바꾸기", {
     "c": "hostname <이름>",
@@ -492,16 +650,16 @@ add("user-add", "mgmt", "config", "관리자 계정 만들기", {
     "o8": "user <사용자> password <비밀번호> read-write all",
 }, keys="계정 사용자 user username 비밀번호 password 관리자")
 
-add("ssh-on", "mgmt", "config", "SSH 켜기", {
-    "c": ("ip domain-name <도메인>\ncrypto key generate rsa modulus 2048\nip ssh version 2\nline vty 0 15\n login local\n transport input ssh",
-          "transport input ssh 는 텔넷을 막습니다"),
+add("ssh-on", "remote", "config", "SSH 켜기", {
+    "c": ("hostname <이름>\nip domain-name <도메인>\ncrypto key generate rsa modulus 2048\nip ssh version 2\nusername <사용자> privilege 15 secret <비밀번호>\nline vty 0 15\n login local\n transport input ssh",
+          "키를 만들려면 hostname·domain-name 이 먼저 있어야 합니다. transport input ssh 는 텔넷을 막습니다"),
     "j": "set system services ssh",
     "a": "crypto key generate hostkey rsa 2048\nservice ssh",
     "o6": "aaa authentication ssh local",
     "o8": "aaa authentication ssh local",
 }, keys="ssh 켜기 암호화 원격 접속 vty")
 
-add("telnet-off", "mgmt", "config", "텔넷 끄기", {
+add("telnet-off", "remote", "config", "텔넷 끄기", {
     "c": "line vty 0 15\n transport input ssh",
     "j": "delete system services telnet",
     "a": "no service telnet",

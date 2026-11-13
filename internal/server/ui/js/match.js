@@ -177,8 +177,13 @@
   // 뽑은 값(caps, 원래 벤더 src)을 벤더 vid 의 명령어에 채운다. 바꾼 값은 표시용으로 따로 돌려준다.
   O.fillCommand = function (cmd, caps, src, vid) {
     const vals = { ...caps };
+    // 와일드카드(0.0.0.255) ↔ 마스크(255.255.255.0)
+    const inv = (m) => { const p = String(m).split('.').map(Number); return p.length === 4 && p.every((x) => x >= 0 && x <= 255) ? p.map((x) => 255 - x).join('.') : null; };
+    if (vals['와일드카드'] && !vals['마스크']) { const m = inv(vals['와일드카드']); if (m && maskToPrefix(m)) vals['마스크'] = m; }
+    if (vals['마스크'] && !vals['와일드카드']) { const w = inv(vals['마스크']); if (w) vals['와일드카드'] = w; }
     if (vals['마스크'] && !vals['프리픽스']) { const p = maskToPrefix(vals['마스크']); if (p) vals['프리픽스'] = p; }
     if (vals['프리픽스'] && !vals['마스크']) { const m = prefixToMask(vals['프리픽스']); if (m) vals['마스크'] = m; }
+    if (vals['마스크'] && !vals['와일드카드']) { const w = inv(vals['마스크']); if (w) vals['와일드카드'] = w; }
     // IP/24 처럼 한 덩어리로 들어온 경우
     for (const k of ['IP', '대역']) {
       if (vals[k] && vals[k].includes('/')) {
@@ -188,6 +193,7 @@
         if (!vals['마스크']) { const m = prefixToMask(pre); if (m) vals['마스크'] = m; }
       }
     }
+    if (vals['마스크'] && !vals['와일드카드']) { const w = inv(vals['마스크']); if (w) vals['와일드카드'] = w; }
     if (!vals['VLAN목록'] && vals['VLAN번호']) vals['VLAN목록'] = vals['VLAN번호'];
     if (!vals['VLAN번호'] && vals['VLAN목록'] && /^\d+$/.test(vals['VLAN목록'])) vals['VLAN번호'] = vals['VLAN목록'];
     const changed = new Set();
